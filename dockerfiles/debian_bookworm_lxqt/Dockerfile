@@ -32,11 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Ensure D-Bus machine-id, DNS resolver, and X11 non-root permissions for CheerpX
-RUN dbus-uuidgen > /etc/machine-id \
+# Ensure D-Bus machine-id and X11 non-root permissions for CheerpX
+RUN mkdir -p /var/lib/dbus /etc/X11 /tmp/.X11-unix /var/log \
+ && dbus-uuidgen > /etc/machine-id \
  && ln -sf /etc/machine-id /var/lib/dbus/machine-id \
- && echo "nameserver 8.8.8.8" > /etc/resolv.conf \
- && mkdir -p /etc/X11 /tmp/.X11-unix /var/log \
  && chmod 1777 /tmp /tmp/.X11-unix \
  && printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > /etc/X11/Xwrapper.config \
  && if [ -f /usr/lib/xorg/Xorg ]; then chmod u+s /usr/lib/xorg/Xorg; fi
@@ -50,8 +49,7 @@ RUN useradd -m -u 1000 -s /bin/bash -G sudo,video,input,tty strata \
  && chmod 0440 /etc/sudoers.d/strata
 
 # StrataOS Debian 12 branding & authentic CLI fetch utility
-RUN printf 'PRETTY_NAME="Debian GNU/Linux 12 (bookworm) — StrataOS LXQt/Openbox"\nNAME="Debian GNU/Linux"\nVERSION_ID="12"\nVERSION="12 (bookworm)"\nVERSION_CODENAME=bookworm\nID=debian\nHOME_URL="https://strata-os.pages.dev"\n' > /etc/os-release \
- && echo "strataos" > /etc/hostname
+RUN printf 'PRETTY_NAME="Debian GNU/Linux 12 (bookworm) — StrataOS LXQt/Openbox"\nNAME="Debian GNU/Linux"\nVERSION_ID="12"\nVERSION="12 (bookworm)"\nVERSION_CODENAME=bookworm\nID=debian\nHOME_URL="https://strata-os.pages.dev"\n' > /etc/os-release
 
 RUN cat <<'EOF' > /usr/local/bin/stratafetch
 #!/bin/bash

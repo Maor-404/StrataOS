@@ -50,10 +50,11 @@ jobs:
           docker export "${CID}" | sudo tar -xpf - -C "${ROOTFS}"
           docker rm "${CID}" >/dev/null
 
-          # Ensure required mountpoints, sticky /tmp, X11 socket dir, and DNS config exist
+          # Ensure required mountpoints, sticky /tmp, X11 socket dir, hostname, and DNS config exist
           sudo mkdir -p "${ROOTFS}/dev" "${ROOTFS}/dev/pts" "${ROOTFS}/proc" "${ROOTFS}/sys" "${ROOTFS}/run" "${ROOTFS}/data" "${ROOTFS}/tmp/.X11-unix"
           sudo chmod 1777 "${ROOTFS}/tmp" "${ROOTFS}/tmp/.X11-unix"
           echo "nameserver 8.8.8.8" | sudo tee "${ROOTFS}/etc/resolv.conf" >/dev/null
+          echo "strataos" | sudo tee "${ROOTFS}/etc/hostname" >/dev/null
 
           # Dynamically compute exact size and inode count (papirus-icon-theme has many tiny files)
           ROOTFS_MB="$(sudo du -sm "${ROOTFS}" | awk '{print $1}')"
