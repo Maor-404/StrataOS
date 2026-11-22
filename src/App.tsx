@@ -60,6 +60,23 @@ export const App: React.FC = () => {
       .then(async () => {
         const pkgs = await kernelClient.getInstalledPackages()
         setInstalledPackages(pkgs)
+
+        // Handle deep-link query parameters (?app=store or ?install=hexforge)
+        const params = new URLSearchParams(window.location.search)
+        const appParam = params.get('app')?.trim().toLowerCase()
+        const installParam = params.get('install')?.trim().toLowerCase()
+        if (appParam && appParam in NATIVE_APPS) {
+          openApp(appParam as keyof typeof NATIVE_APPS)
+        }
+        if (installParam) {
+          const record = await kernelClient.installPackage(installParam)
+          if (record.type === 'wasm-gui') {
+            openApp(`wasm:${record.id}`, {
+              title: `${record.name} v${record.version}`,
+              icon: record.icon,
+            })
+          }
+        }
       })
       .catch(() => {})
 
