@@ -1,0 +1,130 @@
+{
+  "registryVersion": "1.0.0",
+  "updatedAt": "2026-11-22T09:00:00Z",
+  "repository": "/registry",
+  "packages": [
+    {
+      "id": "hexforge",
+      "name": "HexForge",
+      "version": "1.4.2",
+      "author": "Strata Core Labs",
+      "category": "Developer Tools",
+      "type": "wasm-gui",
+      "entry": "hexforge.wasm",
+      "icon": "Binary",
+      "sizeBytes": 282,
+      "tags": [
+        "hex",
+        "binary",
+        "inspector",
+        "reverse-engineering",
+        "elf",
+        "wasm"
+      ],
+      "description": "High-speed binary & hexadecimal file inspector with WASM-accelerated FNV-1a checksums, Shannon entropy analysis, ASCII decoding, and live byte patching directly on the Linux filesystem.",
+      "permissions": [
+        "fs:read",
+        "fs:write"
+      ],
+      "featured": true
+    },
+    {
+      "id": "pixelsynth",
+      "name": "PixelSynth",
+      "version": "2.1.0",
+      "author": "Demoscene Collective",
+      "category": "Games & Demos",
+      "type": "wasm-gui",
+      "entry": "pixelsynth.wasm",
+      "icon": "Sparkles",
+      "sizeBytes": 226,
+      "tags": [
+        "shader",
+        "canvas",
+        "procedural",
+        "graphics",
+        "demoscene",
+        "plasma"
+      ],
+      "description": "Interactive WebAssembly procedural pixel & plasma framebuffer synthesizer. Computes 60fps RGBA pixel buffers in linear WASM memory with adjustable frequency, phase, palette, and frame export to Linux FS.",
+      "permissions": [
+        "canvas",
+        "fs:write"
+      ],
+      "featured": true
+    },
+    {
+      "id": "calcwasm",
+      "name": "CalcWASM",
+      "version": "1.2.0",
+      "author": "WASI Foundation Contrib",
+      "category": "CLI / WASI",
+      "type": "wasm-cli",
+      "entry": "calcwasm.wasm",
+      "icon": "Calculator",
+      "sizeBytes": 411,
+      "tags": [
+        "cli",
+        "wasi",
+        "math",
+        "calculator",
+        "scientific",
+        "bitwise"
+      ],
+      "description": "Fast WASI command-line scientific & bitwise expression evaluator. Run directly from Strata Terminal via `calcwasm \"2^16 + sqrt(144)\"` or `strataget run calcwasm`.",
+      "permissions": [
+        "stdio"
+      ],
+      "featured": true
+    },
+    {
+      "id": "markview",
+      "name": "MarkView",
+      "version": "1.3.5",
+      "author": "Strata Docs Team",
+      "category": "WASM Utilities",
+      "type": "wasm-gui",
+      "entry": "markview.wasm",
+      "icon": "FileText",
+      "sizeBytes": 298,
+      "tags": [
+        "markdown",
+        "documentation",
+        "preview",
+        "editor",
+        "reader"
+      ],
+      "description": "Live split-pane Markdown studio and document previewer that reads and writes `.md` files directly from `/root`, `/home`, and `/etc` with WASM-powered document metrics.",
+      "permissions": [
+        "fs:read",
+        "fs:write"
+      ],
+      "featured": false
+    },
+    {
+      "id": "jsonlab",
+      "name": "JSONLab",
+      "version": "1.8.0",
+      "author": "Strata Core Labs",
+      "category": "Developer Tools",
+      "type": "wasm-gui",
+      "entry": "jsonlab.wasm",
+      "icon": "Braces",
+      "sizeBytes": 240,
+      "tags": [
+        "json",
+        "formatter",
+        "diff",
+        "query",
+        "inspector",
+        "schema"
+      ],
+      "description": "High-speed JSON workbench for formatting, path querying, tree inspection, diffing, and editing Linux configuration files (`/etc/strata/installed.json`, `/etc/strata/registry.json`).",
+      "permissions": [
+        "fs:read",
+        "fs:write"
+      ],
+      "featured": true
+    }
+  ]
+}

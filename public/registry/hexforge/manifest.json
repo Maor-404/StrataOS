@@ -1,0 +1,25 @@
+{
+  "id": "hexforge",
+  "name": "HexForge",
+  "version": "1.4.2",
+  "author": "Strata Core Labs",
+  "category": "Developer Tools",
+  "type": "wasm-gui",
+  "entry": "hexforge.wasm",
+  "icon": "Binary",
+  "sizeBytes": 282,
+  "tags": [
+    "hex",
+    "binary",
+    "inspector",
+    "reverse-engineering",
+    "elf",
+    "wasm"
+  ],
+  "description": "High-speed binary & hexadecimal file inspector with WASM-accelerated FNV-1a checksums, Shannon entropy analysis, ASCII decoding, and live byte patching directly on the Linux filesystem.",
+  "permissions": [
+    "fs:read",
+    "fs:write"
+  ],
+  "featured": true
+}

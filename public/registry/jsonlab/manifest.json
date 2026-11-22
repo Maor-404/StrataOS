@@ -1,0 +1,25 @@
+{
+  "id": "jsonlab",
+  "name": "JSONLab",
+  "version": "1.8.0",
+  "author": "Strata Core Labs",
+  "category": "Developer Tools",
+  "type": "wasm-gui",
+  "entry": "jsonlab.wasm",
+  "icon": "Braces",
+  "sizeBytes": 240,
+  "tags": [
+    "json",
+    "formatter",
+    "diff",
+    "query",
+    "inspector",
+    "schema"
+  ],
+  "description": "High-speed JSON workbench for formatting, path querying, tree inspection, diffing, and editing Linux configuration files (`/etc/strata/installed.json`, `/etc/strata/registry.json`).",
+  "permissions": [
+    "fs:read",
+    "fs:write"
+  ],
+  "featured": true
+}

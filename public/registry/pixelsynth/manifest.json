@@ -1,0 +1,25 @@
+{
+  "id": "pixelsynth",
+  "name": "PixelSynth",
+  "version": "2.1.0",
+  "author": "Demoscene Collective",
+  "category": "Games & Demos",
+  "type": "wasm-gui",
+  "entry": "pixelsynth.wasm",
+  "icon": "Sparkles",
+  "sizeBytes": 226,
+  "tags": [
+    "shader",
+    "canvas",
+    "procedural",
+    "graphics",
+    "demoscene",
+    "plasma"
+  ],
+  "description": "Interactive WebAssembly procedural pixel & plasma framebuffer synthesizer. Computes 60fps RGBA pixel buffers in linear WASM memory with adjustable frequency, phase, palette, and frame export to Linux FS.",
+  "permissions": [
+    "canvas",
+    "fs:write"
+  ],
+  "featured": true
+}

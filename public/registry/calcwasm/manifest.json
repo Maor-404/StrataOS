@@ -1,0 +1,24 @@
+{
+  "id": "calcwasm",
+  "name": "CalcWASM",
+  "version": "1.2.0",
+  "author": "WASI Foundation Contrib",
+  "category": "CLI / WASI",
+  "type": "wasm-cli",
+  "entry": "calcwasm.wasm",
+  "icon": "Calculator",
+  "sizeBytes": 411,
+  "tags": [
+    "cli",
+    "wasi",
+    "math",
+    "calculator",
+    "scientific",
+    "bitwise"
+  ],
+  "description": "Fast WASI command-line scientific & bitwise expression evaluator. Run directly from Strata Terminal via `calcwasm \"2^16 + sqrt(144)\"` or `strataget run calcwasm`.",
+  "permissions": [
+    "stdio"
+  ],
+  "featured": true
+}
