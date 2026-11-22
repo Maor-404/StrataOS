@@ -9,29 +9,30 @@ import {
 } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { StrataTerminal } from '../apps/StrataTerminal/StrataTerminal'
+import { kernelClient } from '../kernel/kernelClient'
 import { useOsStore, type BootTarget } from '../state/osStore'
 import { STRATA_CONFIG } from '../strata.config'
 
 const BOOT_TARGETS: Array<{ id: BootTarget; label: string; desc: string }> = [
   {
     id: 'desktop',
-    label: 'StrataOS — Minimal Debian (Linux 7.x)',
-    desc: 'Default Debian GNU/Linux Bedrock userland + Lightweight Plasma/LXQt shell + strataget',
+    label: 'StrataOS — Real Debian 12 Bookworm (LXQt-panel + Openbox X11)',
+    desc: 'Default i386 Debian Bookworm VM via CheerpX JIT + OPFS SyncAccessHandle cache + WebGPU/OffscreenCanvas blitter',
   },
   {
     id: 'tty-recovery',
-    label: 'Minimal TTY Recovery Shell (Linux 7.x)',
-    desc: 'Direct /dev/pts/0 Debian root console without desktop window manager overhead',
+    label: 'Lightweight CLI Recovery Shell (unkernel Linux 7.3)',
+    desc: 'Fast CLI-only Linux 7.3.4 aarch64 recovery console (/dev/pts/0) loaded on demand without X11 overhead',
   },
   {
     id: 'uefi-shell',
     label: 'StrataUEFI Interactive Firmware Shell (EFI v2.70)',
-    desc: 'Pre-boot hardware diagnostics, device map, memtest, and NVRAM utility',
+    desc: 'Pre-boot hardware diagnostics, device map, memtest, and persistent NVRAM utility',
   },
   {
     id: 'safe-mode',
-    label: 'StrataOS Safe Mode (LXQt Feather / Low-VRAM)',
-    desc: 'Boots Debian desktop with LXQt Feather Mode (zero blur, zero GPU shaders)',
+    label: 'Debian 12 Bookworm — Clean Overlay Boot',
+    desc: 'Clears the IndexedDB Bookworm overlay (?reset=1) and boots a fresh Debian 12 X11 desktop',
   },
 ]
 
@@ -39,22 +40,36 @@ export const StrataUEFI: React.FC = () => {
   const bootPhase = useOsStore((s) => s.bootPhase)
   const nvram = useOsStore((s) => s.nvram)
   const setBootPhase = useOsStore((s) => s.setBootPhase)
+  const setKernelStatus = useOsStore((s) => s.setKernelStatus)
   const updateNvram = useOsStore((s) => s.updateNvram)
   const resetNvram = useOsStore((s) => s.resetNvram)
-  const updateSettings = useOsStore((s) => s.updateSettings)
 
   const [postProgress, setPostProgress] = useState(0)
   const [activeTab, setActiveTab] = useState<'main' | 'boot' | 'security' | 'shell'>('main')
 
+  // Boot unkernel Linux 7.3 lazily ONLY when entering CLI recovery mode
+  useEffect(() => {
+    if (bootPhase !== 'tty-recovery') return
+    const unsub = kernelClient.subscribeStatus((status, stage) => {
+      setKernelStatus(status, stage)
+    })
+    void kernelClient.boot().catch(() => {})
+    return () => {
+      unsub()
+    }
+  }, [bootPhase, setKernelStatus])
+
   // UEFI Shell state
   const [shellHistory, setShellHistory] = useState<string[]>([
-    'StrataUEFI Interactive Shell v2.70 [ Stratum Firmware Bedrock 1.0.0 ]',
+    'StrataUEFI Interactive Shell v2.70 [ Debian 12 Bookworm X11 / unkernel Dual-Boot ]',
     'Mapping table:',
-    '  FS0  : HardDisk - Alias(s):HD0a0b:;BLK0: (IndexedDB ext4 kwdisk:kwdata-v1)',
-    '  BLK1 : RamDisk  - unkernel.wasm Bundled Initramfs (Linux 7.3.4 aarch64)',
-    '  SHM0 : Memory   - Cross-Origin Isolated SharedArrayBuffer (512 MiB)',
+    '  FS0  : OPFSBlock - Debian 12 Bookworm ext2 (createSyncAccessHandle + Web Locks)',
+    '  FS1  : IDBOverlay - Writable Copy-on-Write Delta (strataos-bookworm-overlay)',
+    '  GPU0 : Display   - OffscreenCanvas Worker + WebGPU Blitter (2D ImageBitmap fallback)',
+    '  BLK1 : Recovery  - unkernel.wasm Linux 7.3.4 CLI Fallback (loaded on demand)',
+    '  SHM0 : Memory    - Cross-Origin Isolated SharedArrayBuffer',
     '',
-    'Type "help" for available commands or "boot" to launch StrataOS Desktop.',
+    'Type "help" for available commands or "boot" to launch Debian 12 X11 Desktop.',
   ])
   const [shellInput, setShellInput] = useState('')
   const shellInputRef = useRef<HTMLInputElement | null>(null)
@@ -63,7 +78,10 @@ export const StrataUEFI: React.FC = () => {
     if (target === 'desktop') {
       setBootPhase('desktop')
     } else if (target === 'safe-mode') {
-      updateSettings({ performanceMode: true, webgpuWallpaperEnabled: false })
+      const url = new URL(window.location.href)
+      url.searchParams.delete('boot')
+      url.searchParams.set('reset', '1')
+      window.history.replaceState({}, '', url.toString())
       setBootPhase('desktop')
     } else if (target === 'tty-recovery') {
       setBootPhase('tty-recovery')
@@ -476,14 +494,22 @@ export const StrataUEFI: React.FC = () => {
                 Firmware &amp; Kernel Specifications
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="text-zinc-400">OS Distribution:</div>
-                <div className="text-zinc-100 font-semibold">{STRATA_CONFIG.releaseTitle}</div>
-                <div className="text-zinc-400">Kernel Binary:</div>
-                <div className="text-zinc-100">{STRATA_CONFIG.kernelRelease}</div>
-                <div className="text-zinc-400">Userspace Emulator:</div>
-                <div className="text-zinc-100">kwemu aarch64 Dynamic WebAssembly JIT</div>
-                <div className="text-zinc-400">Persistent Block Storage:</div>
-                <div className="text-emerald-300">IndexedDB CowDisk ext4 (kwdisk:kwdata-v1)</div>
+                <div className="text-zinc-400">Primary OS Image:</div>
+                <div className="text-zinc-100 font-semibold">
+                  Debian 12 Bookworm (i386) — Openbox + LXQt-panel X11
+                </div>
+                <div className="text-zinc-400">Primary VM Engine:</div>
+                <div className="text-zinc-100">CheerpX x86 Dynamic WebAssembly JIT</div>
+                <div className="text-zinc-400">Disk &amp; Cache Layer:</div>
+                <div className="text-emerald-300">
+                  OPFS createSyncAccessHandle() + IDB Overlay (strataos-bookworm-overlay)
+                </div>
+                <div className="text-zinc-400">Display Pipeline:</div>
+                <div className="text-zinc-100">
+                  OffscreenCanvas Worker + WebGPU Blitter (2D ImageBitmap fallback)
+                </div>
+                <div className="text-zinc-400">CLI Recovery Fallback:</div>
+                <div className="text-zinc-100">unkernel.wasm Linux 7.3.4 aarch64 (on demand)</div>
                 <div className="text-zinc-400">Cross-Origin Isolation:</div>
                 <div className="text-emerald-300">
                   {globalThis.crossOriginIsolated ? 'COOP/COEP Enabled (SharedArrayBuffer)' : 'Disabled'}

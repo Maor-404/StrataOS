@@ -498,15 +498,15 @@ const PLASMOID_DEFAULT_SIZE: Record<PlasmoidType, { w: number; h: number }> = {
 function getInitialBootPhase(): BootPhase {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('showcase') === '1') return 'desktop'
     const bootParam = params.get('boot')?.toLowerCase()
     if (bootParam === 'uefi' || bootParam === 'setup') return 'uefi-setup'
     if (bootParam === 'menu') return 'uefi-boot-menu'
     if (bootParam === 'shell') return 'uefi-shell'
     if (bootParam === 'tty') return 'tty-recovery'
+    if (bootParam === 'post') return 'post'
     if (bootParam === 'desktop' || bootParam === 'skip') return 'desktop'
   }
-  return STRATA_CONFIG.enableUEFI ? 'post' : 'desktop'
+  return 'desktop'
 }
 
 const initialTerminalWindow: WindowInstance = {

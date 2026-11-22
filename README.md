@@ -1,105 +1,81 @@
-# StrataOS v1.0.0 ("Bedrock") — Minimal Debian Linux 7.x + Lightweight Plasma/LXQt in One Tab
+# StrataOS — Real Debian 12 (Bookworm) + Lightweight LXQt/Openbox X11 VM
 
 <p align="center">
-  <strong>Boot a real Minimal Debian GNU/Linux 7.3.4 kernel past working UEFI firmware into a lightweight Plasma/LXQt desktop — with <code>stratafetch</code>, persistent <code>ext4</code> storage, the <code>strataget</code> WASM package manager, WebGPU Compute Studio, and Chrome Built-in AI Copilot — directly inside one browser tab. Zero login. Zero backend.</strong>
+  <strong>Boot a real Debian 12 Bookworm (<code>i386</code>) X11 virtual machine running Openbox + LXQt-panel + PCManFM-Qt + QTerminal directly inside one browser tab via CheerpX — supercharged with OPFS <code>createSyncAccessHandle()</code> disk caching, an <code>OffscreenCanvas</code> + WebGPU framebuffer blitter, persistent <code>apt</code> overlay storage, and <code>StrataUEFI</code> + <code>unkernel</code> CLI recovery. Zero login. 100% static Cloudflare Pages hosting.</strong>
 </p>
 
 <p align="center">
-  <a href="https://strata-os.pages.dev/?showcase=1"><img src="https://img.shields.io/badge/Instant_Showcase-StrataOS_v1.0.0-d70a53?style=for-the-badge&logo=debian&logoColor=ffffff" alt="Instant Showcase" /></a>
-  <a href="https://strata-os.pages.dev"><img src="https://img.shields.io/badge/Live_Demo-Cloudflare_Pages-38bdf8?style=for-the-badge&logo=cloudflarepages&logoColor=0b0d10" alt="Live Demo" /></a>
+  <a href="https://strata-os.pages.dev"><img src="https://img.shields.io/badge/Live_Debian_12_X11-Cloudflare_Pages-d70a53?style=for-the-badge&logo=debian&logoColor=ffffff" alt="Live Debian 12 X11 VM" /></a>
   <a href="https://strata-os.pages.dev/?boot=uefi"><img src="https://img.shields.io/badge/Try_StrataUEFI-BIOS_Setup-10b981?style=for-the-badge" alt="Try StrataUEFI" /></a>
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMaor-404%2FStrataOS&project-name=strata-os&repository-name=strata-os"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+  <a href="https://strata-os.pages.dev/?boot=tty"><img src="https://img.shields.io/badge/CLI_Recovery-unkernel_Linux_7.3-38bdf8?style=for-the-badge" alt="CLI Recovery" /></a>
+  <a href="https://github.com/Maor-404/StrataOS/actions/workflows/build-debian-vm.yml"><img src="https://img.shields.io/badge/Rootfs_Builder-GitHub_Actions-24292e?style=for-the-badge&logo=githubactions&logoColor=ffffff" alt="Rootfs Builder" /></a>
 </p>
-
-<p align="center">
-  <a href="https://strata-os.pages.dev/?showcase=1">
-    <img src="./public/og-preview.png" alt="StrataOS v1.0 — Minimal Debian Linux 7.x + Lightweight Plasma/LXQt in One Tab" width="100%" />
-  </a>
-</p>
-
-> **15-Second Demo GIF / 3D Launch Trailer Slot:** Record a 15-second capture (`?showcase=1 -> stratafetch -> strataget install pixelsynth -> hard refresh`) to `docs/media/demo.gif`, or render the included 60s Blender 4.x 3D launch trailer in [`strata_trailer/`](./strata_trailer/README_RENDER.md) and embed it here.
 
 ---
 
-## 2-Second Instant Proof (`?showcase=1`)
-
-1. Open **[`https://strata-os.pages.dev/?showcase=1`](https://strata-os.pages.dev/?showcase=1)** — skips POST directly into a clean 2-window layout: **Strata Terminal** running `stratafetch` on Debian Linux 7.3 alongside **WebGPU Studio** (or **ByteScope** fallback).
-2. Click **Flex** in the System Tray (or on the **3-Click Live Proof** card) to render and copy a live **`1200×630` StrataFlex PNG Proof Card** with your real kernel version, boot time (ms), WebGPU adapter, and active Plasma/LXQt theme.
-3. Run `strataget install pixelsynth`, then **hard-refresh your browser** — the package persists on the IndexedDB-backed `ext4` filesystem.
-
----
-
-## Architecture Diagram
+## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Firmware["Pre-Boot Firmware Layer"]
-        UEFI["StrataUEFI v1.0.0 POST & Dual-Boot<br/>(Default: Minimal Debian Linux 7.x • Minimal TTY Recovery • UEFI Shell • Safe Mode)"]
+    subgraph BrowserMain["Main Thread (src/vm/RealDebianDesktop.tsx)"]
+        UEFI["StrataUEFI Optional Firmware (?boot=uefi / F2)<br/>Default: Debian 12 Bookworm X11 • Fallback: unkernel CLI"]
+        CheerpX["CheerpX x86 JIT (@leaningtech/cheerpx)<br/>xinit /home/strata/.xinitrc -- /usr/bin/Xorg -retro"]
+        Input["Pointer Events (setPointerCapture) &<br/>Fullscreen Keyboard Lock (Alt+Tab / Super -> Linux)"]
     end
 
-    subgraph MainThread["Main Thread — Lightweight Plasma / LXQt Compositor (Geist Sans / Mono)"]
-        WM["KWin / Openbox WindowManager (96% Opaque Surfaces • 34px Title Bars • Keep Above • Wobbly Windows)"]
-        Panel["Plasma Floating (44px) / LXQt Classic (32px) Panel (Worker Mini-Graph • Feather Mode • Share/Flex)"]
-        KRunner["Top-Center Runner (Alt+Space • Safe Inline Math • /root Search • strataget) & Overview (Ctrl+Up)"]
-        Plasmoids["Desktop Edit Mode & Persisted Plasmoids (SysMon Rings • Clock • Sticky Note • Quick Launch)"]
-        Flex["StrataFlex 1200x630 Offscreen Canvas PNG Card + ?showcase=1 Deep-Link"]
-        Apps["Flagship Apps: PCManFM-Qt Strata Files • Strata Studio • Strata Copilot • WebGPU Studio • ByteScope • Strata Store"]
+    subgraph DisplayWorker["Render Worker (src/vm/gpuDisplay.worker.ts)"]
+        WebGPU["OffscreenCanvas + WebGPU WGSL Blitter<br/>(Automatic 2D ImageBitmap Fallback • 60fps)"]
     end
 
-    subgraph Bridge["Zero-Copy RPC Bridge"]
-        Comlink["Comlink.transfer(ArrayBuffer) + 16ms PTY Batcher"]
+    subgraph StorageWorker["OPFS Worker (src/vm/opfsWorker.ts + opfsCache.ts)"]
+        OPFS["OPFS createSyncAccessHandle() Sparse Block Cache<br/>navigator.storage.persist() + Web Locks + DecompressionStream"]
+        Overlay["CheerpX IDBDevice Overlay (strataos-bookworm-overlay)<br/>Persists apt installs & /home/strata across reloads"]
     end
 
-    subgraph WorkerThread["Dedicated Web Worker (kernelWorker.ts)"]
-        Unkernel["pithings/unkernel Linux 7.3.4 Kernel (arch/wasm + Sv39 MMU)"]
-        Rootfs["Minimal Debian GNU/Linux Userland + <20 MiB Chunked EROFS Loader (chunkedRootfs.ts)"]
-        Strataget["/usr/local/bin/stratafetch & /usr/local/bin/strataget CLI"]
-        Ext4["Persistent Copy-on-Write ext4 Disk (IndexedDB kwdisk:kwdata-v1)"]
+    subgraph Edge["Cloudflare Pages + GitHub Releases"]
+        CF["Cloudflare Pages Function (/api/rootfs/*)<br/>Same-Origin HTTP Range Proxy + CORP/COOP/COEP"]
+        GH["GitHub Release debian-bookworm-v1<br/>debian_bookworm_lxqt.ext2 + .ext2.gz"]
     end
 
-    UEFI -->|"Boot Priority"| MainThread
-    MainThread <-->|"Zero-Copy ArrayBuffer"| Comlink
-    Comlink <--> WorkerThread
-    Unkernel <--> Rootfs
-    Unkernel <--> Strataget
-    Unkernel <--> Ext4
-    Apps <-->|"/etc/strata/installed.json"| Strataget
+    UEFI --> CheerpX
+    Input --> CheerpX
+    CheerpX -->|"SharedArrayBuffer Ring"| WebGPU
+    CheerpX <-->|"Scoped XHR Range Bridge"| OPFS
+    CheerpX <--> Overlay
+    OPFS <-->|"Cache Miss Range Fetch / Gzip Hydration"| CF
+    CF <--> GH
 ```
 
 ---
 
-## Complete v1.0.0 ("Bedrock") Feature Manifest
+## Core Components
 
-- **Minimal Debian GNU/Linux Guest (`src/kernel/`):**
-  - Boots real Linux 7.3.4 (`pithings/unkernel`, 9.7 MiB WASM — strictly under Cloudflare Pages' 25 MiB limit) provisioned as **`Debian GNU/Linux (StrataOS Bedrock Edition)`** (`/etc/os-release`, `/etc/debian_version`, `/root/Desktop`, `/root/.local/share/Trash`, `/mnt/host`).
-  - Pre-installed **`/usr/local/bin/stratafetch`** displays an ASCII Debian + StrataOS swirl alongside live `uname -r`, kernel boot time (ms), memory/storage stats, active Plasma/LXQt theme, and `strataget` package count.
-  - Built-in **`ChunkedHttpBlockDevice`** ([`src/kernel/chunkedRootfs.ts`](./src/kernel/chunkedRootfs.ts)) transparently streams `<20 MiB` split EROFS chunks from `/kernel/debian-manifest.json` if you optionally bundle `unkernel`'s full Debian 13 image via `node scripts/fetch-debian-rootfs.mjs`.
-- **Customized Lightweight Plasma / LXQt Environment:**
-  - **3 Persisted Global Themes (`idb-keyval`):** **Debian Crimson** (signature default: `#161317` slate, `#1e1a20` 96%-opaque windows, Debian Ruby Red `#d70a53` with `contrast-color()` auto-legibility, subtle procedural Debian swirl wallpaper), **Strata Obsidian** (`#0b0d10` charcoal, `#38bdf8` ice-blue accents, floating pill panel), and **LXQt Frost / Breeze Light**.
-  - **LXQt Feather Mode:** Instant Quick Settings & Settings toggle that strips all `backdrop-filter` blur and shadows for 60fps performance on low-end GPUs, paired with snappy `120ms` transitions.
-  - **Floating Plasma (44px) & LXQt Classic (32px) Panel:** Switch between Plasma's auto-flushing floating panel and a razor-thin `32px` LXQt Classic bar with compact `1 | 2 | 3` workspace switcher, live CPU/Worker RPC mini-graph, Kickoff/LXQt Application Menu, System Tray, Calendar, and Peek at Desktop.
-  - **Top-Center Runner (`Alt+Space` / `Ctrl+K`):** App launch, `/root` file search, `strataget` lookup, and safe inline arithmetic (`256 * 12`).
-  - **PCManFM-Qt Inspired Strata Files:** Compact *Places* sidebar (*Home*, *Desktop*, *Trash*, *Mount Host Folder*) + clickable path breadcrumb bar + Move-to-Trash support.
-  - **Desktop Edit Mode & Persisted Plasmoids:** Right-click desktop -> **Enter Edit Mode** to drag and resize System Monitor rings, Analog/Digital Clock, Sticky Note, and Quick Launch widgets.
-- **StrataFlex Proof Card & `?showcase=1`:** 1-click offscreen-canvas `1200×630` PNG proof card (Copy Image, Download PNG, Post to X / Reddit) + `?showcase=1` 2-window instant demo.
-- **Full Flagship Stack Preserved:** **StrataUEFI** (default: *StrataOS — Minimal Debian (Linux 7.x)* + Minimal TTY Recovery fallback), **`strataget`** + **Strata Store** (5 starter WASM apps + `.wasm` sideloading + Submit a WASM App CTA), **Strata GPU Studio** (WebGPU WGSL Compute), **Strata Copilot** (Chrome Built-in AI + BYOK), **Strata Studio** (CodeMirror 6 IDE), **ByteScope**, **Melt93**, **StrataPaint 93**, **TermArcade**, **StrataPet**, and **Time Machine** compressed snapshots.
-- **Launch & Growth Assets:** Organic launch playbook in [`docs/LAUNCH_PLAYBOOK.md`](./docs/LAUNCH_PLAYBOOK.md) and procedural Blender 4.x 3D launch trailer pipeline in [`strata_trailer/README_RENDER.md`](./strata_trailer/README_RENDER.md).
+- **Lean Debian 12 Bookworm + LXQt/Openbox Guest ([`dockerfiles/debian_bookworm_lxqt/Dockerfile`](./dockerfiles/debian_bookworm_lxqt/Dockerfile)):**
+  - `i386/debian:bookworm-slim` with `xorg`, `xinit`, `xserver-xorg-video-fbdev`, `xserver-xorg-input-evdev`, `dbus-x11`, `openbox`, `lxqt-panel`, `pcmanfm-qt`, `qterminal`, `lxqt-config`, `lxqt-themes`, `papirus-icon-theme`, `fonts-dejavu-core`, `sudo`, `curl`, `nano`, `neofetch`, `htop`.
+  - Default user `strata` (password `strata`, passwordless `sudo`), launching `openbox &`, `lxqt-panel &`, and `exec pcmanfm-qt --desktop` with zero heavy compositor lag.
+- **Automated Cloud `.ext2` Builder ([`.github/workflows/build-debian-vm.yml`](./.github/workflows/build-debian-vm.yml)):**
+  - Builds `dockerfiles/debian_bookworm_lxqt` with `docker buildx build --platform=linux/386`, packs a revision-0 bootable `debian_bookworm_lxqt.ext2` (via `mke2fs -t ext2 -r 0 -d`) plus `debian_bookworm_lxqt.ext2.gz`, and publishes both to GitHub Release tag `debian-bookworm-v1`.
+- **Ultra-Fast OPFS Block Cache ([`src/vm/opfsCache.ts`](./src/vm/opfsCache.ts) + [`src/vm/opfsWorker.ts`](./src/vm/opfsWorker.ts)):**
+  - Dedicated Web Worker using `FileSystemFileHandle.createSyncAccessHandle()`, `navigator.storage.persist()`, and `navigator.locks` (multi-tab corruption protection) to cache streamed 64 KiB ext2 blocks locally and optionally unpack `.ext2.gz` via native `DecompressionStream('gzip')` for fast repeat boots.
+- **Zero-Jank OffscreenCanvas + WebGPU Display ([`src/vm/gpuDisplay.ts`](./src/vm/gpuDisplay.ts) + [`src/vm/gpuDisplay.worker.ts`](./src/vm/gpuDisplay.worker.ts)):**
+  - Transfers `<canvas>` via `transferControlToOffscreen()`, transports X11 frames over `SharedArrayBuffer`, and blits at 60fps using a WebGPU WGSL shader (with automatic 2D `ImageBitmap` fallback), wired with `setPointerCapture` and Fullscreen Keyboard Lock (`Alt+Tab`, `Ctrl+W`, `Super`).
+- **StrataUEFI + Lightweight `unkernel` CLI Recovery ([`src/shell/StrataUEFI.tsx`](./src/shell/StrataUEFI.tsx)):**
+  - Press `F2` during boot or visit `?boot=uefi` for StrataUEFI setup, or `?boot=tty` to boot the lightweight `unkernel` Linux 7.3 CLI recovery shell on demand.
 
 ---
 
 ## Deploy to Cloudflare Pages (Primary Free Unlimited-Bandwidth Host)
 
-StrataOS is pre-configured for **Cloudflare Pages** via [`public/_headers`](./public/_headers), [`public/_redirects`](./public/_redirects), and [`wrangler.toml`](./wrangler.toml) (while keeping [`vercel.json`](./vercel.json) intact as a secondary mirror):
+StrataOS is pre-configured for **Cloudflare Pages** via [`public/_headers`](./public/_headers), [`public/_redirects`](./public/_redirects), [`functions/api/rootfs/[[path]].ts`](./functions/api/rootfs/%5B%5Bpath%5D%5D.ts), and [`wrangler.toml`](./wrangler.toml) (while keeping [`vercel.json`](./vercel.json) intact):
 
 1. Connect `Maor-404/StrataOS` in **Cloudflare Dashboard -> Workers & Pages -> Create -> Pages**.
 2. Use these exact build settings:
    - **Build command:** `npm run build`
    - **Build output directory:** `dist`
    - **Environment variable:** `NODE_VERSION=20`
-3. Deploy — Cloudflare Pages automatically serves `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`, `X-Content-Type-Options: nosniff`, cross-origin WASM/kernel/registry headers, and SPA deep-link routing (`/* /index.html 200`).
-4. *(Optional Custom Domain)* Bind your custom domain in Cloudflare Pages, then set the GitHub Repository Variable `SITE_URL` (`Settings -> Secrets and variables -> Actions -> Variables`) so [`.github/workflows/uptime-monitor.yml`](./.github/workflows/uptime-monitor.yml) monitors your custom domain every 6 hours and auto-manages `incident` issues.
+3. Deploy — Cloudflare Pages serves `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (required for `SharedArrayBuffer` and OPFS `createSyncAccessHandle()`), deploys the `/api/rootfs/*` same-origin Range proxy function automatically, and keeps every static asset in `dist/` strictly under 25 MiB.
 
-Test the exact Cloudflare Pages header behavior locally with Wrangler:
+Test locally with Wrangler:
 
 ```bash
 npm run preview:cf

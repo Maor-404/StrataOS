@@ -1,0 +1,108 @@
+name: Build Debian 12 Bookworm LXQt/Openbox VM Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dockerfiles/**'
+      - '.github/workflows/build-debian-vm.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-debian-bookworm-ext2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (i386 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: '386'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build i386 Debian 12 Bookworm + LXQt/Openbox Image
+        run: |
+          docker buildx build \
+            --platform=linux/386 \
+            --file dockerfiles/debian_bookworm_lxqt/Dockerfile \
+            --tag strataos-debian-bookworm-lxqt:latest \
+            --load \
+            dockerfiles/debian_bookworm_lxqt
+
+      - name: Export Container Rootfs into Bootable Revision-0 ext2 Image
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq e2fsprogs pigz
+
+          WORKDIR="$(mktemp -d)"
+          ROOTFS="${WORKDIR}/rootfs"
+          mkdir -p "${ROOTFS}"
+
+          CID="$(docker create --platform=linux/386 strataos-debian-bookworm-lxqt:latest)"
+          docker export "${CID}" | sudo tar -xpf - -C "${ROOTFS}"
+          docker rm "${CID}" >/dev/null
+
+          # Ensure required mountpoints, sticky /tmp, X11 socket dir, and DNS config exist
+          sudo mkdir -p "${ROOTFS}/dev" "${ROOTFS}/dev/pts" "${ROOTFS}/proc" "${ROOTFS}/sys" "${ROOTFS}/run" "${ROOTFS}/data" "${ROOTFS}/tmp/.X11-unix"
+          sudo chmod 1777 "${ROOTFS}/tmp" "${ROOTFS}/tmp/.X11-unix"
+          echo "nameserver 8.8.8.8" | sudo tee "${ROOTFS}/etc/resolv.conf" >/dev/null
+
+          # Dynamically compute exact size and inode count (papirus-icon-theme has many tiny files)
+          ROOTFS_MB="$(sudo du -sm "${ROOTFS}" | awk '{print $1}')"
+          FILE_COUNT="$(sudo find "${ROOTFS}" | wc -l)"
+          INODES="$((FILE_COUNT + 65536))"
+          INODE_OVERHEAD_MB="$(( (INODES * 128) / (1024 * 1024) + 32 ))"
+          IMG_MB="$((ROOTFS_MB + INODE_OVERHEAD_MB + 256))"
+
+          echo "Rootfs: ${ROOTFS_MB} MiB, Files: ${FILE_COUNT} -> Allocating ${IMG_MB} MiB ext2 (${INODES} inodes)..."
+
+          OUT_DIR="${GITHUB_WORKSPACE}/release-assets"
+          mkdir -p "${OUT_DIR}"
+          EXT2_PATH="${OUT_DIR}/debian_bookworm_lxqt.ext2"
+
+          truncate -s "${IMG_MB}M" "${EXT2_PATH}"
+          sudo mke2fs -t ext2 -r 0 -b 4096 -N "${INODES}" -d "${ROOTFS}" -F "${EXT2_PATH}"
+          sudo chown "$(id -u):$(id -g)" "${EXT2_PATH}"
+          e2fsck -fy "${EXT2_PATH}" || true
+
+          # Also produce gzipped archive for native browser DecompressionStream('gzip') offline OPFS hydration
+          pigz -k -6 "${EXT2_PATH}"
+
+          cd "${OUT_DIR}"
+          sha256sum debian_bookworm_lxqt.ext2 debian_bookworm_lxqt.ext2.gz > SHA256SUMS.txt
+          ls -lh debian_bookworm_lxqt.ext2 debian_bookworm_lxqt.ext2.gz SHA256SUMS.txt
+
+          sudo rm -rf "${WORKDIR}"
+
+      - name: Publish debian_bookworm_lxqt.ext2 to GitHub Release (debian-bookworm-v1)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="debian-bookworm-v1"
+          TITLE="StrataOS Debian 12 Bookworm VM (LXQt-panel + Openbox)"
+          NOTES="Automated i386 Debian 12 Bookworm + Openbox + LXQt-panel + PCManFM-Qt + QTerminal rootfs built from \`dockerfiles/debian_bookworm_lxqt/Dockerfile\`. Streamed on demand via HTTP Range requests and cached locally in OPFS (\`createSyncAccessHandle\`)."
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" \
+              release-assets/debian_bookworm_lxqt.ext2 \
+              release-assets/debian_bookworm_lxqt.ext2.gz \
+              release-assets/SHA256SUMS.txt \
+              --clobber
+            gh release edit "${TAG}" --title "${TITLE}" --notes "${NOTES}"
+          else
+            gh release create "${TAG}" \
+              release-assets/debian_bookworm_lxqt.ext2 \
+              release-assets/debian_bookworm_lxqt.ext2.gz \
+              release-assets/SHA256SUMS.txt \
+              --title "${TITLE}" \
+              --notes "${NOTES}"
+          fi
