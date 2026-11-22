@@ -7,8 +7,8 @@
 **Real Linux 7.x Kernel & WASM Package Manager in Your Browser**
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Launch_StrataOS-22d3ee?style=for-the-badge&logo=linux&logoColor=09090b)](https://strata-os.vercel.app)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/strata-os)
-[![Deploy Maor-404/StrataOS](https://img.shields.io/badge/Vercel-One--Click_Clone-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https://github.com/Maor-404/StrataOS)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMaor-404%2FStrataOS&project-name=strata-os&repository-name=strata-os)
+[![Deploy Maor-404/StrataOS](https://img.shields.io/badge/Vercel-One--Click_Deploy-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMaor-404%2FStrataOS&project-name=strata-os&repository-name=strata-os)
 
 [![Kernel: Linux 7.3.4 (unkernel)](https://img.shields.io/badge/Kernel-Linux_7.3.4_(unkernel)-34d399?style=flat-square)](https://github.com/pithings/unkernel)
 [![Package Manager: strataget](https://img.shields.io/badge/CLI_%26_Store-strataget-22d3ee?style=flat-square)](#unified-strataget-cli--strata-store-ecosystem)
