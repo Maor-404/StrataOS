@@ -4,21 +4,22 @@
   :root {
     color-scheme: light dark;
 
-    /* KDE Plasma 6 Breeze Dark design tokens (default) */
-    --breeze-base: #1b1e20;
-    --breeze-view: #232629;
-    --breeze-header: #31363b;
-    --breeze-header-inactive: #25292d;
-    --breeze-window-surface: rgba(27, 30, 32, 0.95);
-    --breeze-panel-bg: rgba(35, 38, 41, 0.86);
-    --breeze-panel-solid: #232629;
-    --breeze-popover-bg: rgba(35, 38, 41, 0.95);
+    /* Signature Default: Debian Crimson (Lightweight Plasma/LXQt) */
+    --breeze-base: #161317;
+    --breeze-view: #1e1a20;
+    --breeze-header: #27212a;
+    --breeze-header-inactive: #1d1920;
+    --breeze-window-surface: rgba(30, 26, 32, 0.96);
+    --breeze-panel-bg: rgba(24, 20, 26, 0.88);
+    --breeze-panel-solid: #1e1a20;
+    --breeze-popover-bg: rgba(30, 26, 32, 0.96);
     --breeze-border: rgba(255, 255, 255, 0.09);
     --breeze-border-strong: rgba(255, 255, 255, 0.16);
-    --breeze-text: #eff0f1;
-    --breeze-text-muted: #a1a9b1;
+    --breeze-text: #f3eff5;
+    --breeze-text-muted: #a99fae;
     --breeze-hover: rgba(255, 255, 255, 0.08);
-    --plasma-accent: #3daee9;
+    --plasma-accent: #d70a53;
+    --kwin-radius: 7px;
 
     /* Legacy alias compatibility */
     --strata-bg-base: var(--breeze-base);
@@ -39,21 +40,42 @@
     }
   }
 
+  /* Global Theme 2: Strata Obsidian (Titanium + Ice Blue) */
+  :root[data-global-theme="strata-obsidian"] {
+    --breeze-base: #0b0d10;
+    --breeze-view: #13171d;
+    --breeze-header: #1a2029;
+    --breeze-header-inactive: #13171d;
+    --breeze-window-surface: rgba(19, 23, 29, 0.96);
+    --breeze-panel-bg: rgba(15, 19, 25, 0.86);
+    --breeze-panel-solid: #13171d;
+    --breeze-popover-bg: rgba(19, 23, 29, 0.96);
+    --breeze-border: rgba(255, 255, 255, 0.09);
+    --breeze-border-strong: rgba(255, 255, 255, 0.16);
+    --breeze-text: #eef2f6;
+    --breeze-text-muted: #94a3b8;
+    --breeze-hover: rgba(255, 255, 255, 0.08);
+    --kwin-radius: 10px;
+  }
+
+  /* Global Theme 3: LXQt Frost / Breeze Light */
+  :root[data-global-theme="lxqt-frost"],
   :root[data-theme="light"],
   :root:has(> head > meta[name="color-scheme"][content="light"]):not([data-theme="dark"]) {
     --breeze-base: #eff0f1;
     --breeze-view: #fcfcfc;
     --breeze-header: #dee0e2;
     --breeze-header-inactive: #e6e8ea;
-    --breeze-window-surface: rgba(239, 240, 241, 0.95);
-    --breeze-panel-bg: rgba(245, 246, 247, 0.86);
+    --breeze-window-surface: rgba(246, 247, 248, 0.96);
+    --breeze-panel-bg: rgba(245, 246, 247, 0.90);
     --breeze-panel-solid: #eff0f1;
-    --breeze-popover-bg: rgba(252, 252, 252, 0.96);
+    --breeze-popover-bg: rgba(252, 252, 252, 0.98);
     --breeze-border: rgba(27, 30, 32, 0.12);
     --breeze-border-strong: rgba(27, 30, 32, 0.22);
-    --breeze-text: #232629;
+    --breeze-text: #1b1e20;
     --breeze-text-muted: #586069;
     --breeze-hover: rgba(27, 30, 32, 0.07);
+    --kwin-radius: 7px;
   }
 
   * {
@@ -84,12 +106,12 @@
   }
 }
 
-/* Auto-contrast foreground against dynamic Plasma accent color (contrast-color + CIE XYZ-D65 RCS fallback) */
+/* Auto-contrast foreground against dynamic Plasma/Debian accent (contrast-color + CIE XYZ-D65 RCS fallback) */
 .plasma-accent-fill {
   background-color: var(--plasma-accent);
   --wcag-y-threshold: 0.17913;
   --y: max(0, sign(var(--wcag-y-threshold) - y));
-  color: #0b0e11;
+  color: #ffffff;
   color: color(from var(--plasma-accent) xyz-d65 calc(var(--y) * 0.9505) var(--y) calc(var(--y) * 1.089));
   color: contrast-color(var(--plasma-accent));
 }
@@ -102,15 +124,15 @@
 .plasma-panel-blur,
 .strata-chrome-blur {
   background-color: var(--breeze-panel-bg);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(165%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
 }
 
 .plasma-panel-solid {
   background-color: var(--breeze-panel-solid);
 }
 
-/* Breeze 95%-opaque Window Surface (no per-window backdrop-filter blur) */
+/* 96%-opaque Qt/Breeze Window Surface (zero per-window backdrop-filter blur) */
 .strata-window-surface {
   background-color: var(--breeze-window-surface);
   border: 1px solid var(--breeze-border);
@@ -122,23 +144,41 @@
   border: 1px solid var(--breeze-border);
 }
 
-/* Layered KWin window shadows + active Plasma accent rim glow */
+/* Layered KWin/Openbox shadows + crisp active accent rim */
 .kwin-shadow {
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.32),
-    0 12px 30px rgba(0, 0, 0, 0.44);
+    0 2px 6px rgba(0, 0, 0, 0.30),
+    0 10px 26px rgba(0, 0, 0, 0.42);
 }
 
 .kwin-shadow-active {
-  border-color: color-mix(in srgb, var(--plasma-accent) 55%, var(--breeze-border));
+  border-color: color-mix(in srgb, var(--plasma-accent) 62%, var(--breeze-border));
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--plasma-accent) 36%, transparent),
-    0 0 22px color-mix(in srgb, var(--plasma-accent) 18%, transparent),
-    0 8px 24px rgba(0, 0, 0, 0.46),
-    0 26px 64px rgba(0, 0, 0, 0.72);
+    0 0 18px color-mix(in srgb, var(--plasma-accent) 18%, transparent),
+    0 6px 20px rgba(0, 0, 0, 0.44),
+    0 20px 52px rgba(0, 0, 0, 0.65);
 }
 
-/* Breeze surface utility classes */
+/* LXQt Feather Mode: disables ALL backdrop-filter blur & drop shadows for ultra-fast 60fps on low-end GPUs */
+:root[data-feather-mode="true"] .plasma-panel-blur,
+:root[data-feather-mode="true"] .strata-chrome-blur {
+  background-color: var(--breeze-panel-solid) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-feather-mode="true"] .kwin-shadow,
+:root[data-feather-mode="true"] .kwin-shadow-active,
+:root[data-feather-mode="true"] .breeze-popover {
+  box-shadow: none !important;
+}
+
+:root[data-feather-mode="true"] .kwin-shadow-active {
+  border-color: var(--plasma-accent) !important;
+}
+
+/* Breeze / LXQt surface utility classes */
 .breeze-surface {
   background-color: var(--breeze-base);
   color: var(--breeze-text);
@@ -164,8 +204,28 @@
   color: var(--breeze-text);
   border: 1px solid var(--breeze-border-strong);
   box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.55),
-    0 2px 8px rgba(0, 0, 0, 0.32);
+    0 10px 30px rgba(0, 0, 0, 0.52),
+    0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+/* Native <dialog closedby="any"> Modal Backdrop */
+dialog.strata-dialog {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--breeze-text);
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow: visible;
+}
+
+dialog.strata-dialog::backdrop {
+  background-color: rgba(8, 6, 10, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+:root[data-feather-mode="true"] dialog.strata-dialog::backdrop {
+  backdrop-filter: none;
 }
 
 /* Native Popover API + CSS Anchor Positioning with @supports progressive enhancement */
@@ -184,28 +244,28 @@
 @supports (position-area: block-start) {
   [popover].plasma-popover-start {
     inset: auto;
-    margin: 0 0 10px 0;
+    margin: 0 0 8px 0;
     position-area: block-start span-inline-end;
     position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
 
   [popover].plasma-popover-end {
     inset: auto;
-    margin: 0 0 10px 0;
+    margin: 0 0 8px 0;
     position-area: block-start span-inline-start;
     position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
 
   [popover].plasma-popover-top-start {
     inset: auto;
-    margin: 10px 0 0 0;
+    margin: 8px 0 0 0;
     position-area: block-end span-inline-end;
     position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
 
   [popover].plasma-popover-top-end {
     inset: auto;
-    margin: 10px 0 0 0;
+    margin: 8px 0 0 0;
     position-area: block-end span-inline-start;
     position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
@@ -214,25 +274,25 @@
 @supports not (position-area: block-start) {
   [popover].plasma-popover-start {
     position: fixed;
-    inset: auto auto 60px 10px;
+    inset: auto auto 54px 10px;
     margin: 0;
   }
 
   [popover].plasma-popover-end {
     position: fixed;
-    inset: auto 10px 60px auto;
+    inset: auto 10px 54px auto;
     margin: 0;
   }
 
   [popover].plasma-popover-top-start {
     position: fixed;
-    inset: 60px auto auto 10px;
+    inset: 54px auto auto 10px;
     margin: 0;
   }
 
   [popover].plasma-popover-top-end {
     position: fixed;
-    inset: 60px 10px auto auto;
+    inset: 54px 10px auto auto;
     margin: 0;
   }
 }
@@ -257,26 +317,26 @@
 
 /* KWin Wobbly Windows gentle spring settle when drag stops */
 .kwin-wobbly-settle {
-  transition: transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1);
+  transition: transform 160ms cubic-bezier(0.22, 1.35, 0.36, 1);
 }
 
-/* Desktop Edit Mode slight zoom-out canvas */
+/* Desktop Edit Mode slight zoom-out canvas (snappy 120ms transition) */
 .plasma-desktop-canvas {
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 240ms ease;
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 120ms ease;
   transform-origin: center center;
 }
 
 .plasma-desktop-canvas[data-edit-mode="true"] {
   transform: scale(0.955) translateY(14px);
-  border-radius: 14px;
+  border-radius: 12px;
   outline: 2px dashed color-mix(in srgb, var(--plasma-accent) 60%, transparent);
   outline-offset: 4px;
 }
 
-/* View Transitions for Workspace Switching & Plasma Overview */
+/* View Transitions for Workspace Switching & Plasma Overview (snappy 120ms) */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 160ms;
+  animation-duration: 120ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 

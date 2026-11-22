@@ -23,13 +23,65 @@ export type AppId = NativeAppId | `wasm:${string}`
 export type SnapZone = 'left' | 'right' | 'maximize' | null
 
 export type WallpaperId =
+  | 'debian-swirl'
   | 'obsidian-grid'
   | 'carbon-slate'
   | 'midnight-aurora'
   | 'deep-abyss'
+  | 'lxqt-frost'
   | 'webgpu-compute'
 
 export type AccentColorId = 'cyan' | 'emerald' | 'amber' | 'sky' | 'rose'
+export type GlobalThemeId = 'debian-crimson' | 'strata-obsidian' | 'lxqt-frost'
+export type PanelStyle = 'floating' | 'lxqt-compact'
+
+export interface GlobalThemePreset {
+  id: GlobalThemeId
+  name: string
+  tagline: string
+  theme: 'dark' | 'light'
+  accentColor: AccentColorId
+  accentHex: string
+  wallpaper: WallpaperId
+  baseHex: string
+  windowHex: string
+}
+
+export const GLOBAL_THEMES: Record<GlobalThemeId, GlobalThemePreset> = {
+  'debian-crimson': {
+    id: 'debian-crimson',
+    name: 'Debian Crimson',
+    tagline: 'Signature warm slate + Debian Ruby Red (#d70a53)',
+    theme: 'dark',
+    accentColor: 'rose',
+    accentHex: '#d70a53',
+    wallpaper: 'debian-swirl',
+    baseHex: '#161317',
+    windowHex: '#1e1a20',
+  },
+  'strata-obsidian': {
+    id: 'strata-obsidian',
+    name: 'Strata Obsidian',
+    tagline: 'Obsidian titanium + Ice Blue (#38bdf8) floating pill',
+    theme: 'dark',
+    accentColor: 'sky',
+    accentHex: '#38bdf8',
+    wallpaper: 'obsidian-grid',
+    baseHex: '#0b0d10',
+    windowHex: '#13171d',
+  },
+  'lxqt-frost': {
+    id: 'lxqt-frost',
+    name: 'LXQt Frost / Breeze Light',
+    tagline: 'High-contrast daylight Breeze Light surfaces',
+    theme: 'light',
+    accentColor: 'sky',
+    accentHex: '#3daee9',
+    wallpaper: 'lxqt-frost',
+    baseHex: '#eff0f1',
+    windowHex: '#fcfcfc',
+  },
+}
 
 export type BootPhase =
   | 'post'
@@ -82,17 +134,23 @@ export interface OsSettings {
   wallpaper: WallpaperId
   accentColor: AccentColorId
   performanceMode: boolean
+  /** LXQt Feather Mode: disables all backdrop-filter blur and shadows for 60fps on low-end devices */
+  featherMode: boolean
   terminalFontSize: number
   showKernelTimestamps: boolean
   webgpuWallpaperEnabled: boolean
-  /** Breeze Dark (default) or Breeze Light color scheme */
+  /** Plasma/LXQt Global Theme preset */
+  globalTheme: GlobalThemeId
+  /** Breeze Dark, Breeze Light, or System color scheme */
   theme: ThemeMode
-  /** Plasma accent color (hex). Default Plasma Blue #3daee9 */
+  /** Plasma/LXQt accent color (hex). Default Debian Ruby Red #d70a53 */
   accentHex: string
   /** KWin Wobbly Windows desktop effect (CSS skew while dragging) */
   wobblyWindows: boolean
-  /** Floating Plasma Panel screen edge */
+  /** Plasma Panel screen edge */
   panelPosition: PanelPosition
+  /** Plasma Floating (44px) or LXQt Classic Compact (32px) panel */
+  panelStyle: PanelStyle
 }
 
 export type PlasmoidType = 'sysmon' | 'clock' | 'note' | 'quicklaunch'
@@ -107,15 +165,26 @@ export interface PlasmoidInstance {
   data?: { text?: string; analog?: boolean; apps?: AppId[] }
 }
 
-/** Plasma panel geometry (px) shared by panel, window manager & snapping */
+/** Plasma/LXQt panel geometry (px) shared by panel, window manager & snapping */
 export const PANEL_HEIGHT = 44
+export const LXQT_PANEL_HEIGHT = 32
 export const PANEL_MARGIN = 6
 
-/** Usable desktop work area. When `flush`, the panel is docked to the screen edge (maximized window present). */
-export function getWorkArea(position: PanelPosition, flush: boolean) {
+export function getPanelHeight(style: PanelStyle = 'floating'): number {
+  return style === 'lxqt-compact' ? LXQT_PANEL_HEIGHT : PANEL_HEIGHT
+}
+
+/** Usable desktop work area. When `flush` or `lxqt-compact`, the panel sits flush against the edge. */
+export function getWorkArea(
+  position: PanelPosition,
+  flush: boolean,
+  panelStyle: PanelStyle = 'floating'
+) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-  const reserved = flush ? PANEL_HEIGHT : PANEL_HEIGHT + PANEL_MARGIN * 2
+  const h = getPanelHeight(panelStyle)
+  const isEdgeFlush = flush || panelStyle === 'lxqt-compact'
+  const reserved = isEdgeFlush ? h : h + PANEL_MARGIN * 2
   return {
     x: 0,
     y: position === 'top' ? reserved : 0,
@@ -285,13 +354,16 @@ const DEFAULT_SETTINGS: OsSettings = {
   wallpaper: STRATA_CONFIG.defaultTheme.wallpaper,
   accentColor: STRATA_CONFIG.defaultTheme.accentColor,
   performanceMode: false,
+  featherMode: false,
   terminalFontSize: 13,
   showKernelTimestamps: true,
   webgpuWallpaperEnabled: false,
+  globalTheme: 'debian-crimson',
   theme: 'dark',
-  accentHex: '#3daee9',
+  accentHex: '#d70a53',
   wobblyWindows: false,
   panelPosition: 'bottom',
+  panelStyle: 'floating',
 }
 
 const DEFAULT_NVRAM: UefiNvramSettings = {
@@ -313,6 +385,8 @@ export interface OsState {
   kernelStatus: KernelStatus
   kernelBootStage: string
   workerLatencyMs: number
+  latencyHistory: number[]
+  bootTimeMs: number
 
   // Workspaces & windows
   activeWorkspace: 1 | 2 | 3
@@ -325,6 +399,7 @@ export interface OsState {
   // Overlays, Drawers & Extras
   commandPaletteOpen: boolean
   aboutModalOpen: boolean
+  flexCardOpen: boolean
   missionControlOpen: boolean
   notificationDrawerOpen: boolean
   melt93Active: boolean
@@ -342,7 +417,7 @@ export interface OsState {
   // Settings
   settings: OsSettings
 
-  // KDE Plasma desktop state
+  // KDE Plasma / LXQt desktop state
   editMode: boolean
   peekDesktop: boolean
   proofCardDismissed: boolean
@@ -355,6 +430,9 @@ export interface OsState {
   updatePlasmoid: (id: string, partial: Partial<Omit<PlasmoidInstance, 'id' | 'type'>>) => void
   removePlasmoid: (id: string) => void
   toggleKeepAbove: (windowId: string) => void
+  setFlexCardOpen: (open: boolean) => void
+  setBootTimeMs: (ms: number) => void
+  applyGlobalTheme: (id: GlobalThemeId) => void
   // Actions
   setBootPhase: (phase: BootPhase) => void
   updateNvram: (partial: Partial<UefiNvramSettings>) => void
@@ -420,6 +498,7 @@ const PLASMOID_DEFAULT_SIZE: Record<PlasmoidType, { w: number; h: number }> = {
 function getInitialBootPhase(): BootPhase {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
+    if (params.get('showcase') === '1') return 'desktop'
     const bootParam = params.get('boot')?.toLowerCase()
     if (bootParam === 'uefi' || bootParam === 'setup') return 'uefi-setup'
     if (bootParam === 'menu') return 'uefi-boot-menu'
@@ -433,11 +512,11 @@ function getInitialBootPhase(): BootPhase {
 const initialTerminalWindow: WindowInstance = {
   id: 'win-terminal',
   appId: 'terminal',
-  title: 'Strata Terminal — /dev/pts/0',
+  title: 'Strata Terminal — Debian /dev/pts/0',
   icon: 'Terminal',
   workspace: 1,
   x: 84,
-  y: 52,
+  y: 44,
   width: 820,
   height: 520,
   minWidth: 460,
@@ -454,8 +533,10 @@ export const useOsStore = create<OsState>()(
     nvram: DEFAULT_NVRAM,
 
     kernelStatus: 'booting',
-    kernelBootStage: 'Initializing WebWorker...',
+    kernelBootStage: 'Initializing Debian WebWorker...',
     workerLatencyMs: 0.4,
+    latencyHistory: [0.4, 0.5, 0.4, 0.3, 0.4, 0.5, 0.4, 0.4],
+    bootTimeMs: 0,
 
     activeWorkspace: 1,
     windows: {
@@ -468,6 +549,7 @@ export const useOsStore = create<OsState>()(
 
     commandPaletteOpen: false,
     aboutModalOpen: false,
+    flexCardOpen: false,
     missionControlOpen: false,
     notificationDrawerOpen: false,
     melt93Active: false,
@@ -517,7 +599,7 @@ export const useOsStore = create<OsState>()(
           h: size.h,
           data:
             type === 'note'
-              ? { text: 'strataget install pixelsynth\n→ reload → still here ✓' }
+              ? { text: 'stratafetch\nstrataget install pixelsynth\n→ reload → still here ✓' }
               : type === 'clock'
                 ? { analog: true }
                 : type === 'quicklaunch'
@@ -547,6 +629,29 @@ export const useOsStore = create<OsState>()(
         if (!win) return
         win.keepAbove = !win.keepAbove
       }),
+
+    setFlexCardOpen: (open) =>
+      set((state) => {
+        state.flexCardOpen = open
+      }),
+
+    setBootTimeMs: (ms) =>
+      set((state) => {
+        state.bootTimeMs = ms
+      }),
+
+    applyGlobalTheme: (id) =>
+      set((state) => {
+        const preset = GLOBAL_THEMES[id]
+        if (!preset) return
+        state.settings.globalTheme = preset.id
+        state.settings.theme = preset.theme
+        state.settings.accentColor = preset.accentColor
+        state.settings.accentHex = preset.accentHex
+        state.settings.wallpaper = preset.wallpaper
+        savePreferencesToIdb(state.settings, state.pinnedApps)
+      }),
+
     setBootPhase: (phase) =>
       set((state) => {
         state.bootPhase = phase
@@ -573,6 +678,7 @@ export const useOsStore = create<OsState>()(
     setWorkerLatency: (ms) =>
       set((state) => {
         state.workerLatencyMs = ms
+        state.latencyHistory = [...state.latencyHistory.slice(-15), ms]
       }),
 
     setActiveWorkspace: (ws) => {
@@ -883,7 +989,7 @@ export const useOsStore = create<OsState>()(
           if (!win.isMaximized && !win.snapState) {
             win.prevBounds = { x: win.x, y: win.y, width: win.width, height: win.height }
           }
-          const area = getWorkArea(state.settings.panelPosition, false)
+          const area = getWorkArea(state.settings.panelPosition, false, state.settings.panelStyle)
           const gap = PANEL_MARGIN
           const halfW = Math.floor((area.width - gap * 3) / 2)
           win.isMaximized = false
@@ -895,7 +1001,7 @@ export const useOsStore = create<OsState>()(
           return
         }
 
-        const area = getWorkArea(state.settings.panelPosition, false)
+        const area = getWorkArea(state.settings.panelPosition, false, state.settings.panelStyle)
         win.isMaximized = false
         win.snapState = null
         win.x = Math.round(bounds.x)

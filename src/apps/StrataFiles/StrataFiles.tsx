@@ -1,8 +1,10 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   ArrowUp,
+  ChevronRight,
   Code2,
   Download,
+  Edit3,
   File,
   FileCode,
   FilePlus,
@@ -10,12 +12,14 @@ import {
   Folder,
   FolderPlus,
   HardDrive,
+  Home,
+  Monitor,
   RefreshCw,
   Terminal,
   Trash2,
   Upload,
 } from 'lucide-react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { kernelClient } from '../../kernel/kernelClient'
 import type { FsEntry } from '../../kernel/types'
 import { useOsStore } from '../../state/osStore'
@@ -24,15 +28,14 @@ export interface StrataFilesProps {
   initialPath?: string
 }
 
-const BOOKMARK_PATHS = [
-  { label: '/root', path: '/root', desc: 'Root Home' },
-  { label: '/home/strata', path: '/home/strata', desc: 'User Workspace' },
-  { label: '/mnt/host', path: '/mnt/host', desc: 'Mounted Host Folder' },
-  { label: '/opt/strata/apps', path: '/opt/strata/apps', desc: 'WASM Packages' },
-  { label: '/etc/strata', path: '/etc/strata', desc: 'Registry & Config' },
-  { label: '/usr/local/bin', path: '/usr/local/bin', desc: 'CLI Wrappers' },
-  { label: '/data', path: '/data', desc: 'ext4 Persistent Disk' },
-  { label: '/', path: '/', desc: 'Root Filesystem' },
+const TRASH_DIR = '/root/.local/share/Trash'
+
+const SYSTEM_BOOKMARKS = [
+  { label: 'WASM Apps', path: '/opt/strata/apps' },
+  { label: 'Strata Config', path: '/etc/strata' },
+  { label: 'Local Binaries', path: '/usr/local/bin' },
+  { label: 'ext4 /data', path: '/data' },
+  { label: 'Filesystem /', path: '/' },
 ]
 
 function formatBytes(bytes: number): string {
@@ -46,22 +49,27 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
   const installedPackages = useOsStore((s) => s.installedPackages)
 
   const [currentDir, setCurrentDir] = useState(initialPath ?? '/root')
+  const [editingPath, setEditingPath] = useState(false)
+  const [pathDraft, setPathDraft] = useState(initialPath ?? '/root')
   const [entries, setEntries] = useState<FsEntry[]>([])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [statusMsg, setStatusMsg] = useState('Synced with Linux ext4 filesystem')
+  const [statusMsg, setStatusMsg] = useState('Synced with Debian ext4 filesystem')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [newPromptType, setNewPromptType] = useState<'file' | 'dir' | null>(null)
   const [newPromptName, setNewPromptName] = useState('')
 
   const loadDirectory = useCallback(async (dirPath: string) => {
+    const clean = dirPath.trim() || '/'
     setLoading(true)
     try {
-      const list = await kernelClient.listDirectory(dirPath)
+      const list = await kernelClient.listDirectory(clean)
       setEntries(list)
-      setCurrentDir(dirPath)
+      setCurrentDir(clean)
+      setPathDraft(clean)
+      setEditingPath(false)
       setSelectedPath(null)
-      setStatusMsg(`${list.length} items in ${dirPath}`)
+      setStatusMsg(`${list.length} items in ${clean}`)
     } catch (err) {
       setStatusMsg(`Error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -92,11 +100,24 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
     }
   }, [currentDir, loadDirectory])
 
+  const breadcrumbs = useMemo(() => {
+    const normalized = currentDir === '/' ? '/' : currentDir.replace(/\/+$/, '')
+    if (normalized === '/') return [{ label: '/', path: '/' }]
+    const parts = normalized.split('/').filter(Boolean)
+    const list = [{ label: '/', path: '/' }]
+    let acc = ''
+    for (const part of parts) {
+      acc += `/${part}`
+      list.push({ label: part, path: acc })
+    }
+    return list
+  }, [currentDir])
+
   const parentRef = useRef<HTMLDivElement | null>(null)
   const rowVirtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => 34,
     overscan: 10,
   })
 
@@ -112,7 +133,6 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
       void loadDirectory(entry.path)
       return
     }
-    // Check if an installed community WASM app handles this extension
     const hasHexForge = installedPackages.some((p) => p.id === 'hexforge')
     const hasMarkView = installedPackages.some((p) => p.id === 'markview')
     const hasJsonLab = installedPackages.some((p) => p.id === 'jsonlab')
@@ -194,7 +214,7 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
       } else {
         await kernelClient.writeFileText(
           '/mnt/host/HOST_MOUNT_README.txt',
-          'File System Access API (window.showDirectoryPicker) mount point at /mnt/host.\nUse Upload or Chromium showDirectoryPicker to sync host files directly into Linux.\n'
+          'File System Access API (window.showDirectoryPicker) mount point at /mnt/host.\nUse Upload or Chromium showDirectoryPicker to sync host files directly into Debian Linux.\n'
         )
         setStatusMsg('Initialized /mnt/host mount point')
         await loadDirectory('/mnt/host')
@@ -224,9 +244,16 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
 
   const handleDeleteSelected = async () => {
     if (!selectedPath) return
+    const name = selectedPath.split('/').pop() ?? 'item'
     try {
-      await kernelClient.deletePath(selectedPath)
-      setStatusMsg(`Deleted ${selectedPath}`)
+      if (currentDir === TRASH_DIR || selectedPath.startsWith(`${TRASH_DIR}/`)) {
+        await kernelClient.deletePath(selectedPath)
+        setStatusMsg(`Permanently deleted ${name}`)
+      } else {
+        await kernelClient.createDirectory(TRASH_DIR)
+        await kernelClient.renamePath(selectedPath, `${TRASH_DIR}/${name}`)
+        setStatusMsg(`Moved ${name} to Trash`)
+      }
       await loadDirectory(currentDir)
     } catch (err) {
       setStatusMsg(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -237,7 +264,7 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
 
   return (
     <div
-      className="flex h-full flex-col bg-zinc-950 text-zinc-100 select-none"
+      className="flex h-full flex-col bg-[var(--breeze-base)] text-[var(--breeze-text)] select-none"
       onDragOver={(e) => {
         e.preventDefault()
         setIsDraggingOver(true)
@@ -249,61 +276,115 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
         void handleUploadFiles(e.dataTransfer.files)
       }}
     >
-      {/* Top Path & Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-zinc-900/70 px-3 py-2 text-xs">
-        <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
+      {/* PCManFM-Qt Top Breadcrumb & Action Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--breeze-border)] bg-[var(--breeze-header)]/80 px-2.5 py-1.5 text-xs">
+        <div className="flex items-center gap-1 flex-1 min-w-[240px]">
           <button
+            type="button"
             onClick={navigateUp}
             disabled={currentDir === '/'}
-            className="rounded border border-white/10 bg-zinc-800 p-1.5 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40"
+            className="rounded border border-[var(--breeze-border)] bg-[var(--breeze-view)] p-1.5 text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)] disabled:opacity-40 cursor-pointer"
             title="Parent Directory"
+            aria-label="Parent Directory"
           >
-            <ArrowUp className="h-3.5 w-3.5" />
+            <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          <input
-            type="text"
-            value={currentDir}
-            onChange={(e) => setCurrentDir(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void loadDirectory(currentDir)}
-            className="flex-1 rounded border border-white/10 bg-zinc-950 px-2.5 py-1 font-mono text-xs text-zinc-100 focus:border-cyan-500 focus:outline-none"
-          />
+
+          {/* Fast Path Breadcrumb Bar OR Inline Path Input */}
+          {editingPath ? (
+            <input
+              type="text"
+              autoFocus
+              value={pathDraft}
+              onChange={(e) => setPathDraft(e.target.value)}
+              onBlur={() => setEditingPath(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void loadDirectory(pathDraft)
+                if (e.key === 'Escape') {
+                  setPathDraft(currentDir)
+                  setEditingPath(false)
+                }
+              }}
+              className="flex-1 rounded border border-[var(--plasma-accent)] bg-[var(--breeze-base)] px-2.5 py-1 font-mono text-xs text-[var(--breeze-text)] focus:outline-none"
+            />
+          ) : (
+            <div
+              aria-label="Path Breadcrumbs"
+              className="flex flex-1 items-center gap-0.5 overflow-x-auto rounded border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-1.5 py-0.5 font-mono text-xs"
+            >
+              {breadcrumbs.map((crumb, idx) => (
+                <React.Fragment key={crumb.path}>
+                  {idx > 0 && (
+                    <ChevronRight
+                      className="h-3 w-3 shrink-0 text-[var(--breeze-text-muted)]"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void loadDirectory(crumb.path)}
+                    className={`shrink-0 rounded px-1.5 py-0.5 transition duration-120 cursor-pointer ${
+                      idx === breadcrumbs.length - 1
+                        ? 'font-semibold plasma-accent-text bg-[var(--breeze-hover)]'
+                        : 'text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)]'
+                    }`}
+                  >
+                    {crumb.label}
+                  </button>
+                </React.Fragment>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setPathDraft(currentDir)
+                  setEditingPath(true)
+                }}
+                title="Edit path directly"
+                aria-label="Edit path directly"
+                className="ml-auto rounded p-1 text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] cursor-pointer"
+              >
+                <Edit3 className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+
           <button
+            type="button"
             onClick={() => void loadDirectory(currentDir)}
-            className="rounded border border-white/10 bg-zinc-800 p-1.5 text-zinc-300 hover:bg-zinc-700"
+            className="rounded border border-[var(--breeze-border)] bg-[var(--breeze-view)] p-1.5 text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)] cursor-pointer"
             title="Refresh Directory"
+            aria-label="Refresh Directory"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loading ? 'animate-spin plasma-accent-text' : ''}`}
+              aria-hidden="true"
+            />
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => void handleMountHostFolder()}
-            className="inline-flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-2 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/25"
-            title="Mount Host Folder into /mnt/host via File System Access API"
-          >
-            <HardDrive className="h-3.5 w-3.5" /> Mount Host Folder
-          </button>
-          <button
+            type="button"
             onClick={() => {
               setNewPromptType('file')
               setNewPromptName('untitled.txt')
             }}
-            className="inline-flex items-center gap-1 rounded bg-zinc-800 border border-white/10 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+            className="inline-flex items-center gap-1 rounded border border-[var(--breeze-border)] bg-[var(--breeze-view)] px-2 py-1 text-xs hover:border-[var(--plasma-accent)] cursor-pointer"
           >
-            <FilePlus className="h-3.5 w-3.5 text-cyan-400" /> New File
+            <FilePlus className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" /> File
           </button>
           <button
+            type="button"
             onClick={() => {
               setNewPromptType('dir')
               setNewPromptName('new-folder')
             }}
-            className="inline-flex items-center gap-1 rounded bg-zinc-800 border border-white/10 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+            className="inline-flex items-center gap-1 rounded border border-[var(--breeze-border)] bg-[var(--breeze-view)] px-2 py-1 text-xs hover:border-[var(--plasma-accent)] cursor-pointer"
           >
-            <FolderPlus className="h-3.5 w-3.5 text-amber-400" /> New Folder
+            <FolderPlus className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" /> Folder
           </button>
-          <label className="inline-flex cursor-pointer items-center gap-1 rounded bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-1 text-xs font-medium text-cyan-300 hover:bg-cyan-500/25">
-            <Upload className="h-3.5 w-3.5" /> Upload
+          <label className="inline-flex cursor-pointer items-center gap-1 rounded plasma-accent-fill px-2.5 py-1 text-xs font-semibold hover:brightness-110">
+            <Upload className="h-3.5 w-3.5" aria-hidden="true" /> Upload
             <input
               type="file"
               multiple
@@ -316,8 +397,8 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
 
       {/* Inline New File / Folder Prompt */}
       {newPromptType && (
-        <div className="flex items-center gap-2 border-b border-cyan-500/30 bg-zinc-900 px-3 py-1.5 text-xs">
-          <span className="text-cyan-300">
+        <div className="flex items-center gap-2 border-b border-[var(--plasma-accent)] bg-[var(--breeze-view)] px-3 py-1.5 text-xs">
+          <span className="plasma-accent-text font-medium">
             Create {newPromptType === 'dir' ? 'Directory' : 'File'} in {currentDir}:
           </span>
           <input
@@ -326,79 +407,140 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
             value={newPromptName}
             onChange={(e) => setNewPromptName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void handleCreateSubmit()}
-            className="rounded border border-white/15 bg-zinc-950 px-2 py-0.5 font-mono text-xs text-zinc-100"
+            className="rounded border border-[var(--breeze-border-strong)] bg-[var(--breeze-base)] px-2 py-0.5 font-mono text-xs text-[var(--breeze-text)]"
           />
           <button
+            type="button"
             onClick={() => void handleCreateSubmit()}
-            className="rounded bg-cyan-500 px-2.5 py-0.5 text-xs font-semibold text-zinc-950"
+            className="rounded plasma-accent-fill px-2.5 py-0.5 text-xs font-semibold cursor-pointer"
           >
             Create
           </button>
           <button
+            type="button"
             onClick={() => setNewPromptType(null)}
-            className="text-zinc-400 hover:text-zinc-200"
+            className="text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)] cursor-pointer"
           >
             Cancel
           </button>
         </div>
       )}
 
-      {/* Main Layout: Sidebar Bookmarks + Virtualized File Table */}
-      <div className="grid flex-1 grid-cols-12 divide-x divide-white/10 overflow-hidden">
-        {/* Sidebar Bookmarks */}
-        <div className="col-span-3 flex flex-col justify-between bg-zinc-900/40 p-2 text-xs overflow-y-auto">
-          <div className="space-y-1">
-            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-              Linux Mounts & Paths
+      {/* Main Layout: Compact PCManFM-Qt Places Sidebar + Virtualized File Table */}
+      <div className="grid flex-1 grid-cols-12 divide-x divide-[var(--breeze-border)] overflow-hidden">
+        {/* Compact Places Sidebar */}
+        <aside className="col-span-3 flex flex-col justify-between bg-[var(--breeze-view)]/70 p-2 text-xs overflow-y-auto">
+          <div className="space-y-3">
+            <div className="space-y-0.5">
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--breeze-text-muted)]">
+                Places
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadDirectory('/root')}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                  currentDir === '/root'
+                    ? 'plasma-accent-fill font-semibold'
+                    : 'hover:bg-[var(--breeze-hover)]'
+                }`}
+              >
+                <Home className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Home</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void loadDirectory('/root/Desktop')}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                  currentDir === '/root/Desktop'
+                    ? 'plasma-accent-fill font-semibold'
+                    : 'hover:bg-[var(--breeze-hover)]'
+                }`}
+              >
+                <Monitor className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Desktop</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void loadDirectory(TRASH_DIR)}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                  currentDir === TRASH_DIR
+                    ? 'plasma-accent-fill font-semibold'
+                    : 'hover:bg-[var(--breeze-hover)]'
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Trash</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleMountHostFolder()}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                  currentDir === '/mnt/host'
+                    ? 'plasma-accent-fill font-semibold'
+                    : 'hover:bg-[var(--breeze-hover)]'
+                }`}
+                title="Mount Host Folder into /mnt/host via File System Access API"
+              >
+                <HardDrive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Mount Host Folder</span>
+              </button>
             </div>
-            {BOOKMARK_PATHS.map((bm) => {
-              const active = currentDir === bm.path
-              return (
-                <button
-                  key={bm.path}
-                  onClick={() => void loadDirectory(bm.path)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition ${
-                    active
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      : 'text-zinc-300 hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <HardDrive className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
-                  <div className="min-w-0">
-                    <div className="truncate font-mono text-xs font-medium">{bm.label}</div>
-                    <div className="truncate text-[10px] text-zinc-500">{bm.desc}</div>
-                  </div>
-                </button>
-              )
-            })}
+
+            <div className="space-y-0.5">
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--breeze-text-muted)]">
+                Debian System
+              </div>
+              {SYSTEM_BOOKMARKS.map((bm) => {
+                const active = currentDir === bm.path
+                return (
+                  <button
+                    key={bm.path}
+                    type="button"
+                    onClick={() => void loadDirectory(bm.path)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                      active
+                        ? 'border border-[var(--plasma-accent)] bg-[var(--breeze-hover)] font-medium'
+                        : 'text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)]'
+                    }`}
+                  >
+                    <span className="truncate text-[11px]">{bm.label}</span>
+                    <span className="truncate font-mono text-[9px] opacity-65">{bm.path}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          <div className="rounded-lg border border-dashed border-white/10 bg-zinc-950/60 p-2.5 text-center text-[11px] text-zinc-400">
-            Drag & drop files from your host PC anywhere to upload into{' '}
-            <span className="font-mono text-cyan-300">{currentDir}</span>
+          <div className="mt-3 rounded-lg border border-dashed border-[var(--breeze-border-strong)] bg-[var(--breeze-base)]/60 p-2 text-center text-[10px] text-[var(--breeze-text-muted)]">
+            Drop host files anywhere to copy into{' '}
+            <span className="font-mono plasma-accent-text">{currentDir}</span>
           </div>
-        </div>
+        </aside>
 
         {/* Right: Virtualized Directory Contents */}
-        <div className="col-span-9 flex h-full flex-col overflow-hidden bg-zinc-950">
+        <div className="col-span-9 flex h-full flex-col overflow-hidden bg-[var(--breeze-base)]">
           {/* Table Header */}
-          <div className="grid grid-cols-12 border-b border-white/10 bg-zinc-900/60 px-3 py-1.5 font-mono text-[11px] text-zinc-400">
+          <div className="grid grid-cols-12 border-b border-[var(--breeze-border)] bg-[var(--breeze-view)] px-3 py-1.5 font-mono text-[10px] text-[var(--breeze-text-muted)]">
             <div className="col-span-6">NAME</div>
             <div className="col-span-2">SIZE</div>
-            <div className="col-span-2">PERMISSIONS</div>
+            <div className="col-span-2">MODE</div>
             <div className="col-span-2 text-right">ACTIONS</div>
           </div>
 
           {/* Virtualized Rows */}
           <div ref={parentRef} className="relative flex-1 overflow-y-auto p-1">
             {isDraggingOver && (
-              <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-950/40 text-sm font-semibold text-cyan-200">
+              <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-[var(--plasma-accent)] bg-[var(--breeze-view)]/90 text-sm font-semibold">
                 Drop files to upload straight into {currentDir}
               </div>
             )}
 
             {entries.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-xs text-zinc-500">
+              <div className="flex h-full items-center justify-center text-xs text-[var(--breeze-text-muted)]">
                 Empty directory
               </div>
             ) : (
@@ -428,49 +570,51 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
                       <div
                         onClick={() => setSelectedPath(entry.path)}
                         onDoubleClick={() => handleOpenEntry(entry)}
-                        className={`grid h-full grid-cols-12 items-center rounded px-3 text-xs cursor-pointer transition ${
+                        className={`grid h-full grid-cols-12 items-center rounded px-3 text-xs cursor-pointer transition duration-120 ${
                           isSelected
-                            ? 'bg-cyan-500/20 text-cyan-100 border border-cyan-500/30'
-                            : 'hover:bg-zinc-900/80 text-zinc-200'
+                            ? 'border border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
+                            : 'hover:bg-[var(--breeze-hover)]'
                         }`}
                       >
                         <div className="col-span-6 flex items-center gap-2 min-w-0">
                           {entry.type === 'dir' ? (
                             <Folder className="h-4 w-4 shrink-0 text-amber-400" />
                           ) : entry.name.endsWith('.wasm') ? (
-                            <FileCode className="h-4 w-4 shrink-0 text-cyan-400" />
+                            <FileCode className="h-4 w-4 shrink-0 plasma-accent-text" />
                           ) : entry.name.endsWith('.md') || entry.name.endsWith('.json') ? (
                             <FileText className="h-4 w-4 shrink-0 text-emerald-400" />
                           ) : (
-                            <File className="h-4 w-4 shrink-0 text-zinc-400" />
+                            <File className="h-4 w-4 shrink-0 text-[var(--breeze-text-muted)]" />
                           )}
                           <span className="truncate font-mono">{entry.name}</span>
                         </div>
-                        <div className="col-span-2 font-mono text-[11px] text-zinc-400">
+                        <div className="col-span-2 font-mono text-[11px] text-[var(--breeze-text-muted)]">
                           {entry.type === 'dir' ? 'DIR' : formatBytes(entry.size)}
                         </div>
-                        <div className="col-span-2 font-mono text-[11px] text-zinc-500">
+                        <div className="col-span-2 font-mono text-[11px] text-[var(--breeze-text-muted)]">
                           {entry.permissions}
                         </div>
                         <div className="col-span-2 flex items-center justify-end gap-1">
                           {entry.type !== 'dir' && (
                             <>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   openApp('code', { filePath: entry.path })
                                 }}
-                                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-cyan-300"
+                                className="rounded p-1 text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] cursor-pointer"
                                 title="Edit in Strata Code"
                               >
                                 <Code2 className="h-3.5 w-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   void handleDownloadToHost(entry)
                                 }}
-                                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-emerald-300"
+                                className="rounded p-1 text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-emerald-400 cursor-pointer"
                                 title="Download to Host PC"
                               >
                                 <Download className="h-3.5 w-3.5" />
@@ -487,26 +631,31 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
           </div>
 
           {/* Bottom Action & Status Bar */}
-          <div className="flex items-center justify-between border-t border-white/10 bg-zinc-900/80 px-3 py-1.5 text-xs">
-            <span className="font-mono text-[11px] text-zinc-400">{statusMsg}</span>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between border-t border-[var(--breeze-border)] bg-[var(--breeze-view)] px-3 py-1.5 text-xs">
+            <span className="truncate font-mono text-[11px] text-[var(--breeze-text-muted)]">
+              {statusMsg}
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
               <button
+                type="button"
                 onClick={() => {
                   openApp('terminal')
                   setTimeout(() => {
                     kernelClient.sendCommandToTerminal(`cd "${currentDir}" && ls -la`)
                   }, 120)
                 }}
-                className="inline-flex items-center gap-1 rounded bg-zinc-800 px-2 py-0.5 font-mono text-[11px] text-zinc-300 hover:bg-zinc-700"
+                className="inline-flex items-center gap-1 rounded border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-2 py-0.5 font-mono text-[11px] hover:border-[var(--plasma-accent)] cursor-pointer"
               >
-                <Terminal className="h-3 w-3 text-cyan-400" /> Open Dir in Terminal
+                <Terminal className="h-3 w-3 plasma-accent-text" /> Open in Terminal
               </button>
               {selectedEntry && (
                 <button
+                  type="button"
                   onClick={() => void handleDeleteSelected()}
-                  className="inline-flex items-center gap-1 rounded bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-[11px] text-red-300 hover:bg-red-500/25"
+                  className="inline-flex items-center gap-1 rounded bg-red-500/15 border border-red-500/35 px-2 py-0.5 text-[11px] text-red-400 hover:bg-red-500/25 cursor-pointer"
                 >
-                  <Trash2 className="h-3 w-3" /> Delete
+                  <Trash2 className="h-3 w-3" />
+                  {currentDir === TRASH_DIR ? 'Delete Permanently' : 'Move to Trash'}
                 </button>
               )}
             </div>

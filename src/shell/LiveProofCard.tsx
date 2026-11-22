@@ -1,4 +1,4 @@
-import { CheckCircle2, Package, RefreshCw, Shield, Sparkles, Terminal, X } from 'lucide-react'
+import { Award, CheckCircle2, Package, RefreshCw, Shield, Sparkles, Terminal, X } from 'lucide-react'
 import React, { useState } from 'react'
 import { toast } from 'sonner'
 import { kernelClient } from '../kernel/kernelClient'
@@ -12,13 +12,18 @@ export const LiveProofCard: React.FC = () => {
   const installedPackages = useOsStore((s) => s.installedPackages)
   const openApp = useOsStore((s) => s.openApp)
   const setBootPhase = useOsStore((s) => s.setBootPhase)
+  const setFlexCardOpen = useOsStore((s) => s.setFlexCardOpen)
   const editMode = useOsStore((s) => s.editMode)
   const panelPosition = useOsStore((s) => s.settings.panelPosition)
 
   const [checkedKernel, setCheckedKernel] = useState(false)
   const [installing, setInstalling] = useState(false)
 
-  if (bootPhase !== 'desktop' || dismissed || editMode) return null
+  const isShowcase =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('showcase') === '1'
+
+  if (bootPhase !== 'desktop' || dismissed || editMode || isShowcase) return null
 
   const hasPixelSynth = installedPackages.some((p) => p.id === 'pixelsynth')
 
@@ -26,9 +31,9 @@ export const LiveProofCard: React.FC = () => {
     setCheckedKernel(true)
     openApp('terminal')
     setTimeout(() => {
-      kernelClient.sendCommandToTerminal('uname -a && cat /etc/os-release')
+      kernelClient.sendCommandToTerminal('stratafetch')
     }, 140)
-    toast.success('Running real Linux 7.3 kernel verification in Terminal')
+    toast.success('Running stratafetch on Debian GNU/Linux 7.3')
   }
 
   const handleStep2Install = async () => {
@@ -63,7 +68,7 @@ export const LiveProofCard: React.FC = () => {
       id="live-proof-card"
       aria-label="3-Click Live Proof"
       style={{
-        top: panelPosition === 'top' ? '64px' : '16px',
+        top: panelPosition === 'top' ? '56px' : '16px',
       }}
       className="breeze-popover plasma-panel-blur fixed right-4 z-[7000] w-[320px] max-w-[calc(100vw-24px)] rounded-xl p-3.5 text-xs select-none"
     >
@@ -77,7 +82,7 @@ export const LiveProofCard: React.FC = () => {
               3-Click Live Proof
             </div>
             <div className="font-mono text-[10px] text-[var(--breeze-text-muted)]">
-              Real Linux 7.3 + Plasma 6 • Zero Backend
+              Debian 7.x + Plasma/LXQt • Zero Backend
             </div>
           </div>
         </div>
@@ -98,7 +103,7 @@ export const LiveProofCard: React.FC = () => {
           <button
             type="button"
             onClick={handleStep1Kernel}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] transition cursor-pointer"
+            className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer"
           >
             {checkedKernel || kernelStatus === 'online' ? (
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
@@ -107,10 +112,10 @@ export const LiveProofCard: React.FC = () => {
             )}
             <div className="min-w-0 flex-1">
               <div className="font-medium text-[var(--breeze-text)]">
-                1. Verify Linux 7.3 Kernel
+                1. Run Debian stratafetch
               </div>
               <div className="truncate font-mono text-[10px] text-[var(--breeze-text-muted)]">
-                uname -a &amp;&amp; cat /etc/os-release
+                stratafetch (live Linux 7.3 telemetry)
               </div>
             </div>
           </button>
@@ -121,7 +126,7 @@ export const LiveProofCard: React.FC = () => {
             type="button"
             onClick={() => void handleStep2Install()}
             disabled={installing}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] disabled:opacity-60 transition cursor-pointer"
+            className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] disabled:opacity-60 transition duration-120 cursor-pointer"
           >
             {hasPixelSynth ? (
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
@@ -143,7 +148,7 @@ export const LiveProofCard: React.FC = () => {
           <button
             type="button"
             onClick={() => void handleStep3Reload()}
-            className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] transition cursor-pointer"
+            className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-2 text-left hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer"
           >
             <RefreshCw className="h-3.5 w-3.5 shrink-0 plasma-accent-text" aria-hidden="true" />
             <div className="min-w-0">
@@ -158,13 +163,24 @@ export const LiveProofCard: React.FC = () => {
             type="button"
             onClick={() => setBootPhase('uefi-setup')}
             title="Inspect StrataUEFI Firmware"
-            className="flex flex-col items-center justify-center rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-1.5 text-[10px] font-mono text-[var(--breeze-text-muted)] hover:border-[var(--plasma-accent)] hover:text-[var(--breeze-text)] transition cursor-pointer"
+            className="flex flex-col items-center justify-center rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 px-2.5 py-1.5 text-[10px] font-mono text-[var(--breeze-text-muted)] hover:border-[var(--plasma-accent)] hover:text-[var(--breeze-text)] transition duration-120 cursor-pointer"
           >
             <Shield className="h-3.5 w-3.5 plasma-accent-text mb-0.5" aria-hidden="true" />
             UEFI
           </button>
         </li>
       </ol>
+
+      {/* 1-Click StrataFlex Proof Card CTA */}
+      <button
+        id="proof-open-flex-btn"
+        type="button"
+        onClick={() => setFlexCardOpen(true)}
+        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg plasma-accent-fill py-1.5 text-xs font-semibold hover:brightness-110 transition duration-120 cursor-pointer"
+      >
+        <Award className="h-3.5 w-3.5" aria-hidden="true" />
+        Export StrataFlex Proof Card (PNG)
+      </button>
     </aside>
   )
 }

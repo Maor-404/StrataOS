@@ -14,8 +14,8 @@ import { StrataStudio } from '../apps/StrataStudio/StrataStudio'
 import { StrataTerminal } from '../apps/StrataTerminal/StrataTerminal'
 import { WasmAppHost } from '../apps/WasmAppHost/WasmAppHost'
 import {
+  getPanelHeight,
   getWorkArea,
-  PANEL_HEIGHT,
   PANEL_MARGIN,
   useOsStore,
   type SnapZone,
@@ -91,6 +91,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
   const activeWorkspace = useOsStore((s) => s.activeWorkspace)
   const isFocused = useOsStore((s) => s.focusedWindowId === windowId)
   const panelPosition = useOsStore((s) => s.settings.panelPosition)
+  const panelStyle = useOsStore((s) => s.settings.panelStyle)
   const wobblyWindows = useOsStore((s) => s.settings.wobblyWindows)
   const peekDesktop = useOsStore((s) => s.peekDesktop)
 
@@ -104,6 +105,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
 
   const frameRef = useRef<HTMLDivElement | null>(null)
   const rafRef = useRef<number | null>(null)
+  const panelH = getPanelHeight(panelStyle)
 
   const handleDragStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -118,8 +120,8 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
 
       const vw = window.innerWidth
       const vh = window.innerHeight
-      const topLimit = panelPosition === 'top' ? PANEL_HEIGHT + PANEL_MARGIN : 0
-      const bottomLimit = panelPosition === 'bottom' ? vh - PANEL_HEIGHT - 36 : vh - 36
+      const topLimit = panelPosition === 'top' ? panelH + PANEL_MARGIN : 0
+      const bottomLimit = panelPosition === 'bottom' ? vh - panelH - 36 : vh - 36
 
       let startX = win.x
       let startY = win.y
@@ -213,7 +215,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       window.addEventListener('pointermove', onPointerMove)
       window.addEventListener('pointerup', onPointerUp)
     },
-    [win, windowId, panelPosition, wobblyWindows, focusWindow, commitWindowBounds, setActiveSnapPreview]
+    [win, windowId, panelPosition, panelH, wobblyWindows, focusWindow, commitWindowBounds, setActiveSnapPreview]
   )
 
   const handleResizeStart = useCallback(
@@ -226,7 +228,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       const el = frameRef.current
       if (!el) return
 
-      const topLimit = panelPosition === 'top' ? PANEL_HEIGHT + PANEL_MARGIN : 0
+      const topLimit = panelPosition === 'top' ? panelH + PANEL_MARGIN : 0
       const startX = win.x
       const startY = win.y
       const startW = win.width
@@ -297,7 +299,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       window.addEventListener('pointermove', onPointerMove)
       window.addEventListener('pointerup', onPointerUp)
     },
-    [win, windowId, panelPosition, focusWindow, commitWindowBounds]
+    [win, windowId, panelPosition, panelH, focusWindow, commitWindowBounds]
   )
 
   if (!win) return null
@@ -305,7 +307,7 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
   const isOnActiveWorkspace = win.workspace === activeWorkspace
   const isVisible = isOnActiveWorkspace && !win.isMinimized
 
-  const maxArea = getWorkArea(panelPosition, true)
+  const maxArea = getWorkArea(panelPosition, true, panelStyle)
   const renderX = win.isMaximized ? maxArea.x : win.x
   const renderY = win.isMaximized ? maxArea.y : win.y
   const renderW = win.isMaximized ? maxArea.width : win.width
@@ -328,10 +330,11 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
         display: isVisible ? 'flex' : 'none',
         opacity: peekDesktop ? 0.08 : 1,
         pointerEvents: peekDesktop ? 'none' : 'auto',
+        borderRadius: win.isMaximized ? '0px' : 'var(--kwin-radius)',
       }}
-      className={`fixed top-0 left-0 flex-col overflow-hidden strata-window-surface transition-opacity duration-150 ${
-        win.isMaximized ? 'rounded-none' : 'rounded-[10px]'
-      } ${isFocused ? 'kwin-shadow-active' : 'kwin-shadow'}`}
+      className={`fixed top-0 left-0 flex-col overflow-hidden strata-window-surface transition-opacity duration-120 ${
+        isFocused ? 'kwin-shadow-active' : 'kwin-shadow'
+      }`}
     >
       {/* 8-Directional Resize Handles */}
       {!win.isMaximized &&
@@ -433,8 +436,9 @@ export const WindowManager: React.FC = () => {
   const windowOrder = useOsStore((s) => s.windowOrder)
   const activeSnapPreview = useOsStore((s) => s.activeSnapPreview)
   const panelPosition = useOsStore((s) => s.settings.panelPosition)
+  const panelStyle = useOsStore((s) => s.settings.panelStyle)
 
-  const snapArea = getWorkArea(panelPosition, activeSnapPreview === 'maximize')
+  const snapArea = getWorkArea(panelPosition, activeSnapPreview === 'maximize', panelStyle)
 
   return (
     <>

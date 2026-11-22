@@ -10,7 +10,14 @@ export interface StrataDistroConfig {
     elevatedPanel: string
     borderHairline: string
     accentColor: 'cyan' | 'emerald' | 'amber' | 'sky' | 'rose'
-    wallpaper: 'obsidian-grid' | 'carbon-slate' | 'midnight-aurora' | 'deep-abyss' | 'webgpu-compute'
+    wallpaper:
+      | 'debian-swirl'
+      | 'obsidian-grid'
+      | 'carbon-slate'
+      | 'midnight-aurora'
+      | 'deep-abyss'
+      | 'lxqt-frost'
+      | 'webgpu-compute'
   }
   registryUrl: string
   pinnedDockApps: string[]
@@ -31,15 +38,15 @@ export const STRATA_CONFIG: StrataDistroConfig = {
   osName: 'StrataOS',
   version: '1.0.0',
   codename: 'Bedrock',
-  releaseTitle: 'StrataOS v1.0.0 ("Bedrock")',
-  kernelRelease: 'Linux 7.3.4-unkernel-bedrock (arch/wasm SMP)',
+  releaseTitle: 'StrataOS v1.0.0 ("Bedrock") — Minimal Debian + Plasma/LXQt',
+  kernelRelease: 'Linux 7.3.4-unkernel-bedrock (Debian GNU/Linux arch/wasm SMP)',
   defaultTheme: {
-    desktopBase: '#09090b',
-    windowSurface: 'rgba(18, 18, 21, 0.94)',
-    elevatedPanel: '#1c1c21',
-    borderHairline: 'rgba(255, 255, 255, 0.08)',
-    accentColor: 'cyan',
-    wallpaper: 'obsidian-grid',
+    desktopBase: '#161317',
+    windowSurface: 'rgba(30, 26, 32, 0.96)',
+    elevatedPanel: '#1e1a20',
+    borderHairline: 'rgba(255, 255, 255, 0.09)',
+    accentColor: 'rose',
+    wallpaper: 'debian-swirl',
   },
   registryUrl: '/registry/index.json',
   pinnedDockApps: [
@@ -58,5 +65,5 @@ export const STRATA_CONFIG: StrataDistroConfig = {
   uefiPostDelayMs: 1500,
   enableWebGPUExclusive: true,
   repoUrl: 'https://github.com/Maor-404/StrataOS',
-  liveDemoUrl: 'https://sonic-koto-mowjpsl.tmp.now',
+  liveDemoUrl: 'https://strata-os.pages.dev',
 }

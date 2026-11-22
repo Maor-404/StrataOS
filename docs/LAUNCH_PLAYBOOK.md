@@ -1,6 +1,6 @@
 # StrataOS v1.0.0 ("Bedrock") — Organic Launch & Distribution Playbook
 
-> **Live Deployment Note:** This playbook currently references the active temporary Vercel deployment (`https://sonic-koto-mowjpsl.tmp.now`). Once you claim the deployment or bind a permanent Vercel/custom domain, find-and-replace that URL across `index.html`, `README.md`, `src/strata.config.ts`, and the templates below before launch morning.
+> **Live Deployment Note:** This playbook references the Cloudflare Pages production URL (`https://strata-os.pages.dev`) and the instant `?showcase=1` deep link. When you attach a custom domain, set GitHub Repo Variable `SITE_URL` (for `uptime-monitor.yml`) and update `index.html`, `README.md`, `src/strata.config.ts`, and this playbook.
 
 ---
 
@@ -16,7 +16,7 @@
 
 | Time (EST) | Channel / Action | Goal & Checklist |
 | :--- | :--- | :--- |
-| **08:00 AM** | **Production Live Check** | Open `https://sonic-koto-mowjpsl.tmp.now` in an incognito Chrome window. Verify in DevTools: `window.crossOriginIsolated === true`, `COOP: same-origin` + `COEP: require-corp` headers present, `?app=webgpu`, `?boot=uefi`, and `?install=pixelsynth` all work cleanly with zero console errors. |
+| **08:00 AM** | **Production Live Check** | Open `https://strata-os.pages.dev` in an incognito Chrome window. Verify in DevTools: `window.crossOriginIsolated === true`, `COOP: same-origin` + `COEP: require-corp` headers present, `?app=webgpu`, `?boot=uefi`, and `?install=pixelsynth` all work cleanly with zero console errors. |
 | **08:30 AM** | **Asset Verification** | Confirm GitHub repo description, Topics, Social Preview (`public/og-preview.png`), pinned Live Demo URL, and the 15-second native MP4 screen capture (POST -> Plasma 6 -> `strataget install pixelsynth` -> hard refresh). |
 | **09:00 AM** | **Hacker News (`Show HN`)** | Submit the live demo URL (or GitHub repo) with a humble, factual title. Post the technical maker comment **within 2 minutes** explaining `unkernel`, `SharedArrayBuffer`, IndexedDB `ext4`, and trade-offs. Stay online to reply thoughtfully to every question for 3 hours. |
 | **09:30 AM** | **X / Twitter Thread** | Publish a 4-post thread with the **native auto-playing 15s clip or 3D Blender trailer** attached to Post 1. Put the live demo + GitHub link in Post 2 (keeps Post 1 native video reach higher). |
@@ -39,7 +39,7 @@
 **Maker Comment (post immediately after submitting):**
 > Hey HN, I built StrataOS, a zero-backend Web OS that boots a real compiled Linux 7.3 kernel (`pithings/unkernel` on arch/wasm) inside a dedicated Web Worker with a KDE Plasma 6 Breeze desktop on top.
 >
-> Live demo (no login): https://sonic-koto-mowjpsl.tmp.now  
+> Live demo (no login): https://strata-os.pages.dev  
 > Repo (MIT): https://github.com/Maor-404/StrataOS
 >
 > Because most browser "OS" projects are static UI mockups, here's the fastest 10-second verification:
@@ -68,7 +68,7 @@
 > [Plasma 6 / Browser] StrataOS v1.0 — Real Linux 7.3 + Breeze Dark running natively in a browser tab (zero backend)
 
 **Body / Details Comment:**
-> **Live interactive demo:** https://sonic-koto-mowjpsl.tmp.now  
+> **Live interactive demo:** https://strata-os.pages.dev  
 > **Source (MIT):** https://github.com/Maor-404/StrataOS
 >
 > - **Kernel:** Real Linux 7.3.4 (`pithings/unkernel` WASM in a Web Worker) + persistent IndexedDB `ext4`
@@ -88,7 +88,7 @@
 **Body:**
 > I just shipped **StrataOS v1.0.0 ("Bedrock")**, an open-source browser-native Linux Web OS designed around zero-backend WebAssembly execution:
 >
-> - **Live Demo:** https://sonic-koto-mowjpsl.tmp.now
+> - **Live Demo:** https://strata-os.pages.dev
 > - **Repo:** https://github.com/Maor-404/StrataOS
 >
 > **How the WASM stack works:**
@@ -110,7 +110,7 @@
 > Built a browser-native Linux 7.3 + KDE Plasma 6 Web OS with WebAssembly, Web Workers, Comlink, WebGPU Compute Shaders, Native Popover API, and View Transitions
 
 **Body:**
-> Try the 10-second live proof (no signup): https://sonic-koto-mowjpsl.tmp.now  
+> Try the 10-second live proof (no signup): https://strata-os.pages.dev  
 > GitHub (MIT): https://github.com/Maor-404/StrataOS
 >
 > Try deep links directly into features:
@@ -129,7 +129,7 @@
   >
   > Install a WASM app with `strataget`, hit refresh, and it's still on `ext4`. 🧵👇
 - **Post 2 (live link + repo):**
-  > Test it in 10 seconds (no login): https://sonic-koto-mowjpsl.tmp.now
+  > Test it in 10 seconds (no login): https://strata-os.pages.dev
   > Open-source (MIT): https://github.com/Maor-404/StrataOS
   >
   > Try `Alt+Space` for KRunner (`256 * 12`), `Ctrl+Up` for Plasma Overview, or right-click the desktop -> **Enter Edit Mode** to drag live Plasmoids.
@@ -154,7 +154,7 @@ Send to **TLDR** (`submissions@tldr.tech`), **Console.dev** (`hello@console.dev`
 >
 > Hi [Name], I just open-sourced **StrataOS v1.0** (MIT), a zero-backend Web OS that boots a compiled Linux 7.3 kernel (`pithings/unkernel` WASM in a Web Worker) past a working UEFI firmware into a KDE Plasma 6 Breeze desktop with persistent IndexedDB `ext4` storage.
 >
-> Readers can verify it in 10 seconds with zero login at https://sonic-koto-mowjpsl.tmp.now — run `strataget install pixelsynth`, hard-refresh the browser, and watch the WASM package survive on disk (or jump straight into `?boot=uefi` / `?app=webgpu`).
+> Readers can verify it in 10 seconds with zero login at https://strata-os.pages.dev — run `strataget install pixelsynth`, hard-refresh the browser, and watch the WASM package survive on disk (or jump straight into `?boot=uefi` / `?app=webgpu`).
 >
 > Repo with architecture docs and one-file distro remixing: https://github.com/Maor-404/StrataOS — thanks for considering it for [Newsletter Name]!
 
@@ -179,7 +179,7 @@ Send to **TLDR** (`submissions@tldr.tech`), **Console.dev** (`hello@console.dev`
 - [ ] **`madewithwebassembly.com`** (Submit PR to `torch2424/made-with-webassembly`):
   - **Title:** StrataOS
   - **Summary:** Browser-native Linux 7.3 Web OS with KDE Plasma 6 Breeze UI, StrataUEFI firmware, persistent IndexedDB `ext4`, and the `strataget` WASM package manager.
-  - **Live URL:** `https://sonic-koto-mowjpsl.tmp.now`
+  - **Live URL:** `https://strata-os.pages.dev`
   - **Source URL:** `https://github.com/Maor-404/StrataOS`
 
 ### Directories, SEO & Long-Tail Discovery

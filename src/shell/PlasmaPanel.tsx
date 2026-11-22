@@ -1,5 +1,6 @@
 import {
   Activity,
+  Award,
   Bell,
   Bot,
   Calendar as CalendarIcon,
@@ -9,14 +10,14 @@ import {
   ChevronUp,
   Cpu,
   Edit3,
+  Feather,
   Flame,
-  Gauge,
   Grid,
   Info,
   Layers,
   Lock,
   Monitor,
-  Moon,
+  PanelBottom,
   RotateCcw,
   Search,
   Share2,
@@ -24,7 +25,6 @@ import {
   Sliders,
   Sparkles,
   Star,
-  Sun,
   X,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -32,10 +32,12 @@ import { toast } from 'sonner'
 import { kernelClient } from '../kernel/kernelClient'
 import { STRATA_CONFIG } from '../strata.config'
 import {
+  GLOBAL_THEMES,
+  getPanelHeight,
   NATIVE_APPS,
-  PANEL_HEIGHT,
   useOsStore,
   type AppId,
+  type GlobalThemeId,
   type NativeAppId,
   type WallpaperId,
 } from '../state/osStore'
@@ -45,10 +47,10 @@ import { AppIcon } from './AppIcon'
 type KickoffTab = 'favorites' | 'all' | 'extras'
 
 const WALLPAPER_SWATCHES: Array<{ id: WallpaperId; label: string; bg: string }> = [
-  { id: 'obsidian-grid', label: 'Obsidian', bg: 'linear-gradient(135deg, #1b1e20, #0d1117)' },
-  { id: 'carbon-slate', label: 'Slate', bg: 'radial-gradient(circle at 30% 30%, #232c38, #111418)' },
+  { id: 'debian-swirl', label: 'Debian Crimson', bg: 'radial-gradient(circle at 25% 25%, #5b0926, #161317)' },
+  { id: 'obsidian-grid', label: 'Obsidian', bg: 'linear-gradient(135deg, #1b1e20, #0b0d10)' },
   { id: 'midnight-aurora', label: 'Nordic', bg: 'radial-gradient(circle at 75% 20%, #103240, #12171d)' },
-  { id: 'deep-abyss', label: 'Abyss', bg: 'linear-gradient(180deg, #0b0d10, #020304)' },
+  { id: 'lxqt-frost', label: 'LXQt Frost', bg: 'linear-gradient(135deg, #eff0f1, #cbd5e1)' },
 ]
 
 function hidePopoverById(id: string) {
@@ -60,9 +62,38 @@ function hidePopoverById(id: string) {
   }
 }
 
-function getSystemPrefersDark(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return true
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+/** Lightweight SVG mini-graph showing live Worker/Kernel RPC latency */
+const WorkerMiniGraph: React.FC<{ samples: number[] }> = ({ samples }) => {
+  const pts = samples.length > 1 ? samples : [0.4, 0.4]
+  const maxVal = Math.max(4, ...pts)
+  const w = 40
+  const h = 16
+  const path = pts
+    .map((v, idx) => {
+      const x = (idx / Math.max(1, pts.length - 1)) * w
+      const y = h - Math.min(1, v / maxVal) * (h - 2) - 1
+      return `${idx === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+
+  return (
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className="shrink-0 overflow-visible"
+      aria-hidden="true"
+    >
+      <path
+        d={path}
+        fill="none"
+        stroke="var(--plasma-accent)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 export const PlasmaPanel: React.FC = () => {
@@ -73,6 +104,7 @@ export const PlasmaPanel: React.FC = () => {
   const installedPackages = useOsStore((s) => s.installedPackages)
   const kernelStatus = useOsStore((s) => s.kernelStatus)
   const workerLatencyMs = useOsStore((s) => s.workerLatencyMs)
+  const latencyHistory = useOsStore((s) => s.latencyHistory)
   const settings = useOsStore((s) => s.settings)
   const editMode = useOsStore((s) => s.editMode)
   const peekDesktop = useOsStore((s) => s.peekDesktop)
@@ -83,12 +115,14 @@ export const PlasmaPanel: React.FC = () => {
   const focusWindow = useOsStore((s) => s.focusWindow)
   const toggleMinimizeWindow = useOsStore((s) => s.toggleMinimizeWindow)
   const updateSettings = useOsStore((s) => s.updateSettings)
+  const applyGlobalTheme = useOsStore((s) => s.applyGlobalTheme)
   const setBootPhase = useOsStore((s) => s.setBootPhase)
   const setActiveWorkspace = useOsStore((s) => s.setActiveWorkspace)
   const toggleNotificationDrawer = useOsStore((s) => s.toggleNotificationDrawer)
   const toggleMissionControl = useOsStore((s) => s.toggleMissionControl)
   const toggleCommandPalette = useOsStore((s) => s.toggleCommandPalette)
   const setAboutModalOpen = useOsStore((s) => s.setAboutModalOpen)
+  const setFlexCardOpen = useOsStore((s) => s.setFlexCardOpen)
   const setEditMode = useOsStore((s) => s.setEditMode)
   const setPeekDesktop = useOsStore((s) => s.setPeekDesktop)
   const setStrataPetActive = useOsStore((s) => s.setStrataPetActive)
@@ -102,7 +136,7 @@ export const PlasmaPanel: React.FC = () => {
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [webgpuAvailable, setWebgpuAvailable] = useState<boolean | null>(null)
-  const [sharePreset, setSharePreset] = useState<'active' | 'webgpu' | 'uefi' | 'pixelsynth'>('active')
+  const [sharePreset, setSharePreset] = useState<'showcase' | 'active' | 'webgpu' | 'uefi'>('showcase')
   const [copiedState, setCopiedState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [copyStatusMsg, setCopyStatusMsg] = useState('')
   const copyTimerRef = useRef<number | null>(null)
@@ -131,7 +165,10 @@ export const PlasmaPanel: React.FC = () => {
     }
   }, [])
 
-  // Detect maximized visible window on the active workspace -> panel animates flush
+  const isCompactLxqt = settings.panelStyle === 'lxqt-compact'
+  const panelHeight = getPanelHeight(settings.panelStyle)
+
+  // Floating Plasma Panel animates flush when a visible window maximizes; LXQt Classic is always flush 32px
   const hasMaximizedWindow = useMemo(
     () =>
       !peekDesktop &&
@@ -141,11 +178,12 @@ export const PlasmaPanel: React.FC = () => {
     [windows, activeWorkspace, peekDesktop]
   )
 
+  const isFlush = isCompactLxqt || hasMaximizedWindow
   const isTop = settings.panelPosition === 'top'
   const popoverStartClass = isTop ? 'plasma-popover-top-start' : 'plasma-popover-start'
   const popoverEndClass = isTop ? 'plasma-popover-top-end' : 'plasma-popover-end'
 
-  // Task manager items: pinned apps + any currently running apps not in pinned list
+  // Task manager items: pinned apps + any currently running apps
   const taskItems = useMemo(() => {
     const seen = new Set<AppId>()
     const result: Array<{
@@ -199,7 +237,7 @@ export const PlasmaPanel: React.FC = () => {
     return result
   }, [pinnedApps, windows, activeWorkspace, focusedWindowId, installedPackages, peekDesktop])
 
-  // Kickoff filtered entries
+  // Kickoff / LXQt Application Menu filtered entries
   const kickoffEntries = useMemo(() => {
     const q = kickoffQuery.trim().toLowerCase()
     const nativeList = Object.values(NATIVE_APPS).map((app) => ({
@@ -239,33 +277,13 @@ export const PlasmaPanel: React.FC = () => {
     }
 
     if (kickoffTab === 'favorites') {
-      return all.filter(
-        (e) => pinnedApps.includes(e.id) || e.isWasm
-      )
+      return all.filter((e) => pinnedApps.includes(e.id) || e.isWasm)
     }
     if (kickoffTab === 'extras') {
       return all.filter((e) => e.category === 'Extras' || e.isWasm)
     }
     return all
   }, [kickoffQuery, kickoffTab, installedPackages, pinnedApps, openApp])
-
-  // Resolved visual theme for Quick Settings 2-state toggle
-  const resolvedDark =
-    settings.theme === 'dark' || (settings.theme === 'system' && getSystemPrefersDark())
-
-  // Quick Settings two-state toggle per dark-mode-toggle guidance:
-  // target = opposite of currently rendered scheme; if matches system, revert to 'system'
-  const handleQuickThemeToggle = () => {
-    const sysDark = getSystemPrefersDark()
-    const targetDark = !resolvedDark
-    if (targetDark === sysDark) {
-      updateSettings({ theme: 'system' })
-      toast.info(`Theme follows system (${sysDark ? 'Breeze Dark' : 'Breeze Light'})`)
-    } else {
-      updateSettings({ theme: targetDark ? 'dark' : 'light' })
-      toast.info(targetDark ? 'Switched to Breeze Dark' : 'Switched to Breeze Light')
-    }
-  }
 
   const handleShareSetup = async () => {
     const focusedWin = focusedWindowId ? windows[focusedWindowId] : null
@@ -278,12 +296,12 @@ export const PlasmaPanel: React.FC = () => {
         : STRATA_CONFIG.liveDemoUrl
 
     let target: { url: string; label: string }
-    if (sharePreset === 'webgpu') {
+    if (sharePreset === 'showcase') {
+      target = { url: `${origin}/?showcase=1`, label: 'Instant Showcase (?showcase=1)' }
+    } else if (sharePreset === 'webgpu') {
       target = { url: `${origin}/?app=webgpu`, label: 'Strata GPU Studio (?app=webgpu)' }
     } else if (sharePreset === 'uefi') {
       target = { url: `${origin}/?boot=uefi`, label: 'StrataUEFI Firmware (?boot=uefi)' }
-    } else if (sharePreset === 'pixelsynth') {
-      target = { url: `${origin}/?install=pixelsynth`, label: 'PixelSynth WASM (?install=pixelsynth)' }
     } else {
       target = buildShareSetupUrl(focusedWin?.appId)
     }
@@ -307,7 +325,7 @@ export const PlasmaPanel: React.FC = () => {
 
   const handleRestartKernel = async () => {
     hidePopoverById('plasma-kickoff')
-    toast.info('Syncing ext4 disk and restarting Linux 7.3 kernel...')
+    toast.info('Syncing Debian ext4 disk and restarting Linux 7.3 kernel...')
     try {
       await kernelClient.syncDisk()
     } catch {
@@ -335,7 +353,8 @@ export const PlasmaPanel: React.FC = () => {
   const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const dateString = now.toLocaleDateString([], { month: 'short', day: 'numeric' })
 
-  const panelBlurClass = settings.performanceMode ? 'plasma-panel-solid' : 'plasma-panel-blur'
+  const disableBlur = settings.featherMode || settings.performanceMode
+  const panelBlurClass = disableBlur ? 'plasma-panel-solid' : 'plasma-panel-blur'
 
   return (
     <>
@@ -345,21 +364,21 @@ export const PlasmaPanel: React.FC = () => {
           onClick={() => setLocked(false)}
           onKeyDown={() => setLocked(false)}
           tabIndex={0}
-          className="fixed inset-0 z-[9950] flex flex-col items-center justify-center bg-black/85 backdrop-blur-2xl text-[var(--breeze-text)] select-none"
+          className="fixed inset-0 z-[9950] flex flex-col items-center justify-center bg-black/88 text-[var(--breeze-text)] select-none"
         >
           <div className="font-mono text-6xl font-light tracking-tight">{timeString}</div>
           <div className="mt-2 text-sm text-[var(--breeze-text-muted)]">
             {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
           </div>
-          <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-[var(--breeze-border-strong)] bg-[var(--breeze-view)]/90 px-8 py-6">
+          <div className="mt-8 flex flex-col items-center gap-3 rounded-xl border border-[var(--breeze-border-strong)] bg-[var(--breeze-view)] px-8 py-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-full plasma-accent-fill font-bold text-lg">
-              S
+              D
             </div>
-            <div className="text-sm font-semibold">root@strataos</div>
+            <div className="text-sm font-semibold">root@debian-strata</div>
             <button
               type="button"
               onClick={() => setLocked(false)}
-              className="mt-1 rounded-lg plasma-accent-fill px-5 py-1.5 text-xs font-semibold hover:brightness-110 transition cursor-pointer"
+              className="mt-1 rounded-lg plasma-accent-fill px-5 py-1.5 text-xs font-semibold hover:brightness-110 transition duration-120 cursor-pointer"
             >
               Unlock Session
             </button>
@@ -367,65 +386,84 @@ export const PlasmaPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Floating / Flush KDE Plasma 6 Panel */}
+      {/* Floating Plasma Panel (44px) OR Razor-Thin LXQt Classic Panel (32px) */}
       <nav
         id="plasma-panel"
-        aria-label="Plasma Panel"
-        data-floating={hasMaximizedWindow ? 'false' : 'true'}
+        aria-label="Plasma / LXQt Panel"
+        data-floating={isFlush ? 'false' : 'true'}
+        data-panel-style={settings.panelStyle}
         data-position={settings.panelPosition}
         style={{
-          height: `${PANEL_HEIGHT}px`,
-          left: hasMaximizedWindow ? '0px' : '6px',
-          right: hasMaximizedWindow ? '0px' : '6px',
-          bottom: isTop ? 'auto' : hasMaximizedWindow ? '0px' : '6px',
-          top: isTop ? (hasMaximizedWindow ? '0px' : '6px') : 'auto',
-          borderRadius: hasMaximizedWindow ? '0px' : '12px',
+          height: `${panelHeight}px`,
+          left: isFlush ? '0px' : '6px',
+          right: isFlush ? '0px' : '6px',
+          bottom: isTop ? 'auto' : isFlush ? '0px' : '6px',
+          top: isTop ? (isFlush ? '0px' : '6px') : 'auto',
+          borderRadius: isFlush ? '0px' : settings.globalTheme === 'strata-obsidian' ? '9999px' : '10px',
         }}
-        className={`fixed z-[8200] flex items-center justify-between gap-2 px-2 select-none border transition-all duration-200 ease-out ${panelBlurClass} ${
-          hasMaximizedWindow
-            ? 'border-x-0 shadow-md'
-            : 'shadow-[0_10px_32px_rgba(0,0,0,0.48)]'
+        className={`fixed z-[8200] flex items-center justify-between gap-2 px-2 select-none border transition-all duration-120 ease-out ${panelBlurClass} ${
+          isFlush
+            ? 'border-x-0 shadow-sm'
+            : 'shadow-[0_8px_28px_rgba(0,0,0,0.45)]'
         }`}
       >
-        {/* LEFT: Kickoff Launcher + KRunner quick button + Workspaces pill */}
+        {/* LEFT: Kickoff / LXQt Application Menu + Runner + Compact Workspace Switcher (1 | 2 | 3) */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             id="plasma-kickoff-btn"
             type="button"
             {...({ popoverTarget: 'plasma-kickoff' } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
-            title="Kickoff Application Launcher"
-            aria-label="Kickoff Application Launcher"
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--breeze-hover)] transition cursor-pointer"
+            title="Kickoff / LXQt Application Launcher"
+            aria-label="Application Launcher"
+            className={`flex items-center gap-1.5 rounded-md hover:bg-[var(--breeze-hover)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6 px-1.5' : 'h-8 w-8 justify-center'
+            }`}
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-md plasma-accent-fill shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            <span
+              className={`flex items-center justify-center rounded plasma-accent-fill ${
+                isCompactLxqt ? 'h-4 w-4' : 'h-6 w-6'
+              }`}
+            >
+              <Sparkles className={isCompactLxqt ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} aria-hidden="true" />
             </span>
+            {isCompactLxqt && (
+              <span className="text-[11px] font-semibold tracking-tight">Apps</span>
+            )}
           </button>
 
           <button
             id="plasma-krunner-btn"
             type="button"
             onClick={toggleCommandPalette}
-            title="KRunner Search & Calculator (Alt+Space / Ctrl+K)"
+            title="KRunner / LXQt Runner (Alt+Space / Ctrl+K)"
             aria-label="Open KRunner"
-            className="hidden sm:flex h-7 items-center gap-1.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/50 px-2 text-[11px] text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)] hover:border-[var(--breeze-border-strong)] transition cursor-pointer"
+            className={`hidden sm:flex items-center gap-1.5 rounded-md border border-[var(--breeze-border)] bg-[var(--breeze-base)]/60 px-2 text-[11px] text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)] hover:border-[var(--breeze-border-strong)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6' : 'h-7'
+            }`}
           >
             <Search className="h-3 w-3 plasma-accent-text" aria-hidden="true" />
-            <span>KRunner</span>
+            <span>Runner</span>
             <kbd className="rounded bg-[var(--breeze-hover)] px-1 font-mono text-[9px]">Alt+Space</kbd>
           </button>
 
-          {/* Compact Virtual Desktops Pager */}
-          <div className="hidden md:flex items-center gap-0.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)]/40 p-0.5">
+          {/* Compact Workspace Switcher (1 | 2 | 3) */}
+          <div
+            aria-label="Workspaces"
+            className={`hidden md:flex items-center rounded-md border border-[var(--breeze-border)] bg-[var(--breeze-base)]/50 ${
+              isCompactLxqt ? 'h-6 px-0.5 divide-x divide-[var(--breeze-border)]' : 'p-0.5 gap-0.5'
+            }`}
+          >
             {([1, 2, 3] as const).map((ws) => (
               <button
                 key={ws}
                 type="button"
                 onClick={() => setActiveWorkspace(ws)}
                 title={`Virtual Desktop ${ws} (Alt+${ws})`}
-                className={`h-6 w-6 rounded text-[11px] font-mono transition cursor-pointer ${
+                className={`font-mono transition duration-120 cursor-pointer ${
+                  isCompactLxqt ? 'h-5 px-2 text-[10px]' : 'h-6 w-6 rounded text-[11px]'
+                } ${
                   activeWorkspace === ws
-                    ? 'plasma-accent-fill font-semibold'
+                    ? 'plasma-accent-fill font-semibold rounded-[4px]'
                     : 'text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)]'
                 }`}
               >
@@ -456,7 +494,9 @@ export const PlasmaPanel: React.FC = () => {
               }}
               title={item.label}
               aria-label={item.label}
-              className={`group relative flex h-9 w-10 shrink-0 items-center justify-center rounded-lg transition cursor-pointer ${
+              className={`group relative flex shrink-0 items-center justify-center rounded-md transition duration-120 cursor-pointer ${
+                isCompactLxqt ? 'h-6 px-2 gap-1.5' : 'h-9 w-10'
+              } ${
                 item.isFocused
                   ? 'bg-[var(--breeze-hover)] text-[var(--breeze-text)]'
                   : 'text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)]'
@@ -465,41 +505,48 @@ export const PlasmaPanel: React.FC = () => {
               <AppIcon
                 name={item.icon}
                 appId={item.appId}
-                className={`h-4 w-4 transition-transform group-hover:scale-110 ${
+                className={`${isCompactLxqt ? 'h-3.5 w-3.5' : 'h-4 w-4'} ${
                   item.isFocused ? 'plasma-accent-text' : ''
                 }`}
               />
+              {isCompactLxqt && item.runningWinId && (
+                <span className="hidden xl:inline max-w-[84px] truncate text-[10px] font-medium">
+                  {item.label.replace('Strata ', '')}
+                </span>
+              )}
               {item.isWasm && (
                 <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
               )}
-              {/* Plasma Blue active / running indicator bar */}
+              {/* Active / running indicator bar */}
               {item.runningWinId && (
                 <span
                   style={{
                     backgroundColor: 'var(--plasma-accent)',
                     opacity: item.isFocused ? 1 : item.isMinimized ? 0.4 : 0.72,
-                    width: item.isFocused ? '22px' : '8px',
+                    width: item.isFocused ? (isCompactLxqt ? '100%' : '22px') : '8px',
                   }}
                   className={`absolute ${
-                    isTop ? 'top-0.5' : 'bottom-0.5'
-                  } h-[2.5px] rounded-full transition-all duration-150`}
+                    isTop ? 'top-0' : 'bottom-0'
+                  } h-[2px] rounded-full transition-all duration-120`}
                 />
               )}
             </button>
           ))}
         </div>
 
-        {/* RIGHT: System Tray + Clock + Peek at Desktop */}
+        {/* RIGHT: CPU/Worker Mini-Graph + Kernel + Share/Flex + System Tray + Clock + Peek */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* Kernel Status */}
+          {/* CPU / Worker Latency Mini-Graph & Debian Kernel Status */}
           <button
             type="button"
             onClick={() => openApp('monitor')}
-            title={`Linux 7.3 Kernel: ${kernelStatus} (${workerLatencyMs}ms RPC) — Open Monitor`}
-            className="hidden lg:flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-mono text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition cursor-pointer"
+            title={`Debian Linux 7.3 (${kernelStatus}) • ${workerLatencyMs}ms Worker RPC — Open Monitor`}
+            className={`hidden lg:flex items-center gap-1.5 rounded-md px-1.5 font-mono text-[10px] text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6' : 'h-7'
+            }`}
           >
             <span
-              className={`h-2 w-2 rounded-full ${
+              className={`h-1.5 w-1.5 rounded-full ${
                 kernelStatus === 'online'
                   ? 'bg-emerald-400'
                   : kernelStatus === 'error'
@@ -507,8 +554,23 @@ export const PlasmaPanel: React.FC = () => {
                     : 'bg-amber-400 animate-pulse'
               }`}
             />
-            <span>7.3</span>
-            <span className="opacity-70">{workerLatencyMs}ms</span>
+            <WorkerMiniGraph samples={latencyHistory} />
+            <span>{workerLatencyMs}ms</span>
+          </button>
+
+          {/* 1-Click Share / Flex Proof Card Button */}
+          <button
+            id="tray-flex-btn"
+            type="button"
+            onClick={() => setFlexCardOpen(true)}
+            title="Share / Flex — Export 1200×630 Live Proof Card PNG"
+            aria-label="Share or Flex Proof Card"
+            className={`flex items-center gap-1 rounded-md border border-[var(--breeze-border)] bg-[var(--breeze-base)]/60 px-2 text-[11px] font-medium hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6' : 'h-7'
+            }`}
+          >
+            <Award className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
+            <span className="hidden sm:inline">Flex</span>
           </button>
 
           {/* WebGPU Status */}
@@ -521,7 +583,9 @@ export const PlasmaPanel: React.FC = () => {
                 : 'WebGPU Adapter Unavailable — Open GPU Inspector'
             }
             aria-label="WebGPU Status"
-            className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-[var(--breeze-hover)] transition cursor-pointer"
+            className={`flex items-center justify-center rounded-md hover:bg-[var(--breeze-hover)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6 w-6' : 'h-7 w-7'
+            }`}
           >
             <Cpu
               className={`h-3.5 w-3.5 ${
@@ -537,7 +601,9 @@ export const PlasmaPanel: React.FC = () => {
             onClick={toggleNotificationDrawer}
             title="Notifications & Time Machine Snapshots"
             aria-label="Notifications and Time Machine"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition cursor-pointer"
+            className={`flex items-center justify-center rounded-md text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6 w-6' : 'h-7 w-7'
+            }`}
           >
             <Bell className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -547,12 +613,16 @@ export const PlasmaPanel: React.FC = () => {
             id="plasma-quick-settings-btn"
             type="button"
             {...({ popoverTarget: 'plasma-quick-settings' } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
-            title="Quick Settings & Share This Setup"
+            title="Quick Settings (LXQt Feather Mode, Global Themes & Share)"
             aria-label="Quick Settings"
-            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition cursor-pointer"
+            className={`flex items-center gap-1 rounded-md px-1.5 text-[11px] text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6' : 'h-7'
+            }`}
           >
             <Sliders className="h-3.5 w-3.5" aria-hidden="true" />
-            <Share2 className="h-3 w-3 plasma-accent-text" aria-hidden="true" />
+            {settings.featherMode && (
+              <Feather className="h-3 w-3 plasma-accent-text" aria-hidden="true" />
+            )}
           </button>
 
           {/* Hidden Tray Chevron */}
@@ -562,7 +632,9 @@ export const PlasmaPanel: React.FC = () => {
             {...({ popoverTarget: 'plasma-hidden-tray' } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
             title="Show hidden system tray items"
             aria-label="Hidden system tray items"
-            className="flex h-7 w-6 items-center justify-center rounded-lg text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition cursor-pointer"
+            className={`flex items-center justify-center rounded-md text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6 w-5' : 'h-7 w-6'
+            }`}
           >
             <ChevronUp className={`h-3.5 w-3.5 ${isTop ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
@@ -574,7 +646,9 @@ export const PlasmaPanel: React.FC = () => {
             {...({ popoverTarget: 'plasma-calendar' } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
             title="Open Calendar & System Time"
             aria-label={`Clock ${timeString} ${dateString}`}
-            className="flex h-8 flex-col items-end justify-center rounded-lg px-2 leading-tight hover:bg-[var(--breeze-hover)] transition cursor-pointer"
+            className={`flex items-center justify-center rounded-md px-2 leading-tight hover:bg-[var(--breeze-hover)] transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-6 gap-1.5' : 'h-8 flex-col items-end'
+            }`}
           >
             <span className="font-mono text-[11px] font-semibold text-[var(--breeze-text)]">
               {timeString}
@@ -592,7 +666,9 @@ export const PlasmaPanel: React.FC = () => {
             title={peekDesktop ? 'Restore Windows' : 'Peek at Desktop'}
             aria-label="Peek at Desktop"
             aria-pressed={peekDesktop}
-            className={`ml-0.5 flex h-7 w-3.5 items-center justify-center rounded border transition cursor-pointer ${
+            className={`ml-0.5 flex w-3 items-center justify-center rounded border transition duration-120 cursor-pointer ${
+              isCompactLxqt ? 'h-5' : 'h-7'
+            } ${
               peekDesktop
                 ? 'plasma-accent-fill border-transparent'
                 : 'border-[var(--breeze-border-strong)] bg-[var(--breeze-hover)] hover:border-[var(--plasma-accent)]'
@@ -601,7 +677,7 @@ export const PlasmaPanel: React.FC = () => {
         </div>
       </nav>
 
-      {/* ==================== KICKOFF APPLICATION LAUNCHER POPOVER ==================== */}
+      {/* ==================== KICKOFF / LXQT APPLICATION LAUNCHER POPOVER ==================== */}
       <div
         id="plasma-kickoff"
         {...({ popover: 'auto' } as React.HTMLAttributes<HTMLDivElement>)}
@@ -611,7 +687,7 @@ export const PlasmaPanel: React.FC = () => {
           {/* Search Header */}
           <div className="flex items-center gap-2.5 border-b border-[var(--breeze-border)] bg-[var(--breeze-header)] px-3.5 py-2.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full plasma-accent-fill text-xs font-bold">
-              S
+              D
             </div>
             <div className="relative flex-1">
               <Search
@@ -622,7 +698,7 @@ export const PlasmaPanel: React.FC = () => {
                 type="text"
                 value={kickoffQuery}
                 onChange={(e) => setKickoffQuery(e.target.value)}
-                placeholder="Search applications & strataget WASM apps..."
+                placeholder="Search Debian & strataget WASM applications..."
                 aria-label="Search Kickoff applications"
                 className="w-full rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] py-1.5 pl-8 pr-2.5 text-xs text-[var(--breeze-text)] placeholder:text-[var(--breeze-text-muted)] focus:border-[var(--plasma-accent)] focus:outline-none"
               />
@@ -649,7 +725,7 @@ export const PlasmaPanel: React.FC = () => {
                       setKickoffQuery('')
                       setKickoffTab(tab.id)
                     }}
-                    className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition cursor-pointer ${
+                    className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition duration-120 cursor-pointer ${
                       active
                         ? 'plasma-accent-fill'
                         : 'text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)]'
@@ -701,7 +777,7 @@ export const PlasmaPanel: React.FC = () => {
                       hidePopoverById('plasma-kickoff')
                       entry.onLaunch()
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] transition cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] transition duration-120 cursor-pointer"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] plasma-accent-text">
                       <AppIcon name={entry.icon} appId={entry.id} className="h-4 w-4" />
@@ -734,7 +810,7 @@ export const PlasmaPanel: React.FC = () => {
               href={STRATA_CONFIG.repoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/25 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/25 transition duration-120"
             >
               <Star className="h-3.5 w-3.5 fill-amber-300 text-amber-300" aria-hidden="true" />
               <span>Star StrataOS on GitHub</span>
@@ -768,7 +844,7 @@ export const PlasmaPanel: React.FC = () => {
               <button
                 type="button"
                 onClick={() => void handleRestartKernel()}
-                title="Sync Disk & Restart Linux Kernel"
+                title="Sync Disk & Restart Debian Linux Kernel"
                 className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-rose-400 hover:bg-rose-500/15 cursor-pointer"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -779,15 +855,15 @@ export const PlasmaPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* ==================== QUICK SETTINGS & SHARE POPOVER ==================== */}
+      {/* ==================== QUICK SETTINGS (FEATHER MODE, THEMES, PANEL & SHARE) ==================== */}
       <div
         id="plasma-quick-settings"
         {...({ popover: 'auto' } as React.HTMLAttributes<HTMLDivElement>)}
-        className={`plasma-popover ${popoverEndClass} w-[330px] max-w-[calc(100vw-20px)]`}
+        className={`plasma-popover ${popoverEndClass} w-[344px] max-w-[calc(100vw-20px)]`}
       >
         <div className="breeze-popover rounded-xl p-3.5 space-y-3">
           <div className="flex items-center justify-between border-b border-[var(--breeze-border)] pb-2">
-            <span className="text-xs font-semibold">Plasma Quick Settings</span>
+            <span className="text-xs font-semibold">Plasma / LXQt Quick Settings</span>
             <button
               type="button"
               onClick={() => {
@@ -800,43 +876,96 @@ export const PlasmaPanel: React.FC = () => {
             </button>
           </div>
 
-          {/* Toggle tiles */}
+          {/* Instant LXQt Feather Mode + Compact 32px Panel Toggle */}
           <div className="grid grid-cols-2 gap-2">
             <button
+              id="quick-feather-toggle"
               type="button"
-              onClick={handleQuickThemeToggle}
-              className="flex items-center gap-2 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-2.5 py-2 text-left text-xs hover:border-[var(--plasma-accent)] transition cursor-pointer"
-            >
-              {resolvedDark ? (
-                <Moon className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
-              ) : (
-                <Sun className="h-4 w-4 text-amber-400 shrink-0" aria-hidden="true" />
-              )}
-              <div className="min-w-0">
-                <div className="font-medium truncate">
-                  {resolvedDark ? 'Breeze Dark' : 'Breeze Light'}
-                </div>
-                <div className="text-[10px] text-[var(--breeze-text-muted)]">Click to switch</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => updateSettings({ performanceMode: !settings.performanceMode })}
-              className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition cursor-pointer ${
-                settings.performanceMode
+              onClick={() => {
+                const next = !settings.featherMode
+                updateSettings({ featherMode: next, performanceMode: next })
+                toast.info(
+                  next
+                    ? 'LXQt Feather Mode ON (zero blur, zero shadows)'
+                    : 'LXQt Feather Mode OFF (Plasma translucency restored)'
+                )
+              }}
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition duration-120 cursor-pointer ${
+                settings.featherMode
                   ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                   : 'border-[var(--breeze-border)] bg-[var(--breeze-base)] hover:border-[var(--breeze-border-strong)]'
               }`}
             >
-              <Gauge className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
+              <Feather className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
               <div className="min-w-0">
-                <div className="font-medium truncate">Perf Mode</div>
+                <div className="font-medium truncate">LXQt Feather</div>
                 <div className="text-[10px] text-[var(--breeze-text-muted)]">
-                  {settings.performanceMode ? 'Low-VRAM ON' : 'Blur Active'}
+                  {settings.featherMode ? 'ON • 0 Blur' : 'OFF • Plasma'}
                 </div>
               </div>
             </button>
+
+            <button
+              id="quick-panel-style-toggle"
+              type="button"
+              onClick={() =>
+                updateSettings({
+                  panelStyle: isCompactLxqt ? 'floating' : 'lxqt-compact',
+                })
+              }
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition duration-120 cursor-pointer ${
+                isCompactLxqt
+                  ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
+                  : 'border-[var(--breeze-border)] bg-[var(--breeze-base)] hover:border-[var(--breeze-border-strong)]'
+              }`}
+            >
+              <PanelBottom className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
+              <div className="min-w-0">
+                <div className="font-medium truncate">Panel Style</div>
+                <div className="text-[10px] text-[var(--breeze-text-muted)]">
+                  {isCompactLxqt ? 'LXQt 32px' : 'Floating 44px'}
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* 3 Custom Plasma/LXQt Global Themes */}
+          <div>
+            <div className="mb-1.5 text-[11px] text-[var(--breeze-text-muted)]">Global Theme</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['debian-crimson', 'strata-obsidian', 'lxqt-frost'] as GlobalThemeId[]).map((id) => {
+                const preset = GLOBAL_THEMES[id]
+                const active = settings.globalTheme === id
+                return (
+                  <button
+                    key={id}
+                    id={`quick-theme-${id}`}
+                    type="button"
+                    onClick={() => applyGlobalTheme(id)}
+                    className={`flex flex-col items-start gap-1 rounded-lg border px-2 py-1.5 text-left transition duration-120 cursor-pointer ${
+                      active
+                        ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
+                        : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
+                    }`}
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <span
+                        className="h-3 w-3 rounded-full border border-white/25"
+                        style={{ backgroundColor: preset.accentHex }}
+                      />
+                      {active && <Check className="h-3 w-3 plasma-accent-text" />}
+                    </div>
+                    <span className="truncate w-full text-[10px] font-semibold">
+                      {id === 'debian-crimson'
+                        ? 'Debian Red'
+                        : id === 'strata-obsidian'
+                          ? 'Obsidian'
+                          : 'LXQt Frost'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Wallpaper quick swatches */}
@@ -864,7 +993,7 @@ export const PlasmaPanel: React.FC = () => {
                   type="button"
                   onClick={() => updateSettings({ wallpaper: wp.id })}
                   title={wp.label}
-                  className={`h-8 rounded-lg border transition cursor-pointer ${
+                  className={`h-7 rounded-md border transition duration-120 cursor-pointer ${
                     settings.wallpaper === wp.id
                       ? 'border-[var(--plasma-accent)] ring-1 ring-[var(--plasma-accent)]'
                       : 'border-[var(--breeze-border)]'
@@ -875,28 +1004,36 @@ export const PlasmaPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Viral Loop: Share This Setup deep-link copier */}
+          {/* Share / Flex Proof Card + Deep-Link Copier */}
           <div className="rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] p-2.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold">Share This Setup</span>
-              <span className="font-mono text-[10px] text-[var(--breeze-text-muted)]">
-                Deep Link
-              </span>
+              <span className="text-[11px] font-semibold">Share / Flex Setup</span>
+              <button
+                type="button"
+                onClick={() => {
+                  hidePopoverById('plasma-quick-settings')
+                  setFlexCardOpen(true)
+                }}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] plasma-accent-fill font-semibold cursor-pointer"
+              >
+                <Award className="h-3 w-3" aria-hidden="true" />
+                PNG Flex Card
+              </button>
             </div>
             <div className="grid grid-cols-4 gap-1">
               {(
                 [
+                  { id: 'showcase', label: 'Showcase' },
                   { id: 'active', label: 'Active' },
                   { id: 'webgpu', label: 'WebGPU' },
                   { id: 'uefi', label: 'UEFI' },
-                  { id: 'pixelsynth', label: 'WASM' },
                 ] as const
               ).map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => setSharePreset(p.id)}
-                  className={`rounded py-1 font-mono text-[10px] transition cursor-pointer ${
+                  className={`rounded py-1 font-mono text-[10px] transition duration-120 cursor-pointer ${
                     sharePreset === p.id
                       ? 'plasma-accent-fill font-semibold'
                       : 'bg-[var(--breeze-view)] text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)]'
@@ -913,7 +1050,7 @@ export const PlasmaPanel: React.FC = () => {
                 onClick={() => void handleShareSetup()}
                 data-copied={copiedState === 'copied' ? '' : undefined}
                 data-failed={copiedState === 'failed' ? '' : undefined}
-                className="flex min-h-[28px] flex-1 items-center justify-center gap-1.5 rounded-lg plasma-accent-fill px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition cursor-pointer"
+                className="flex min-h-[28px] flex-1 items-center justify-center gap-1.5 rounded-lg plasma-accent-fill px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition duration-120 cursor-pointer"
               >
                 {copiedState === 'copied' ? (
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1106,7 +1243,7 @@ export const PlasmaPanel: React.FC = () => {
           <div className="flex items-center justify-between border-t border-[var(--breeze-border)] pt-2 font-mono text-[10px] text-[var(--breeze-text-muted)]">
             <span className="flex items-center gap-1">
               <Monitor className="h-3 w-3 plasma-accent-text" aria-hidden="true" />
-              Plasma 6 • Linux 7.3
+              Debian • Plasma/LXQt
             </span>
             <span>{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
           </div>

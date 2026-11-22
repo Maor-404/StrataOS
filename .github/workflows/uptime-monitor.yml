@@ -1,0 +1,119 @@
+name: Uptime & Cross-Origin Isolation Monitor
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check-live-site:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_URL: ${{ vars.SITE_URL || 'https://strata-os.pages.dev' }}
+    steps:
+      - name: Probe HTTP 200 & Mandatory COOP/COEP Headers
+        id: probe
+        run: |
+          set +e
+          HEADERS_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -L -D "$HEADERS_FILE" -o /dev/null -w "%{http_code}" --max-time 25 "$TARGET_URL")
+          CURL_EXIT=$?
+          echo "http_code=${HTTP_CODE}" >> "$GITHUB_OUTPUT"
+          echo "target_url=${TARGET_URL}" >> "$GITHUB_OUTPUT"
+
+          COOP_OK=false
+          COEP_OK=false
+          if grep -iqE '^cross-origin-opener-policy:\s*same-origin' "$HEADERS_FILE"; then
+            COOP_OK=true
+          fi
+          if grep -iqE '^cross-origin-embedder-policy:\s*require-corp' "$HEADERS_FILE"; then
+            COEP_OK=true
+          fi
+
+          echo "coop_ok=${COOP_OK}" >> "$GITHUB_OUTPUT"
+          echo "coep_ok=${COEP_OK}" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURL_EXIT" -eq 0 ] && [ "$HTTP_CODE" = "200" ] && [ "$COOP_OK" = "true" ] && [ "$COEP_OK" = "true" ]; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+            echo "HEALTHY: $TARGET_URL returned HTTP 200 with COOP=same-origin & COEP=require-corp"
+          else
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+            echo "UNHEALTHY: curl_exit=$CURL_EXIT http=$HTTP_CODE coop=$COOP_OK coep=$COEP_OK"
+          fi
+          rm -f "$HEADERS_FILE"
+
+      - name: Open or Close Incident Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const healthy = '${{ steps.probe.outputs.healthy }}' === 'true'
+            const targetUrl = '${{ steps.probe.outputs.target_url }}'
+            const httpCode = '${{ steps.probe.outputs.http_code }}'
+            const coopOk = '${{ steps.probe.outputs.coop_ok }}'
+            const coepOk = '${{ steps.probe.outputs.coep_ok }}'
+            const { owner, repo } = context.repo
+
+            const { data: openIncidents } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: 'incident',
+            })
+
+            if (!healthy) {
+              const summary = [
+                `Automated uptime check failed for **${targetUrl}**.`,
+                '',
+                `- **HTTP Status:** \`${httpCode}\``,
+                `- **COOP (\`same-origin\`):** \`${coopOk}\``,
+                `- **COEP (\`require-corp\`):** \`${coepOk}\``,
+                `- **Workflow Run:** ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              ].join('\n')
+
+              if (openIncidents.length === 0) {
+                try {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name: 'incident',
+                    color: 'd70a53',
+                    description: 'Automated production uptime or COOP/COEP alert',
+                  })
+                } catch {
+                  // label already exists
+                }
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: `[Incident] StrataOS uptime / COOP-COEP check failed (${targetUrl})`,
+                  body: summary,
+                  labels: ['incident'],
+                })
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: openIncidents[0].number,
+                  body: `Still failing:\n\n${summary}`,
+                })
+              }
+              core.setFailed(`Uptime or COOP/COEP probe failed for ${targetUrl}`)
+            } else if (openIncidents.length > 0) {
+              for (const issue of openIncidents) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body: `Recovered! **${targetUrl}** returned HTTP 200 with valid \`COOP: same-origin\` and \`COEP: require-corp\` headers. Auto-closing incident.`,
+                })
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                })
+              }
+            }

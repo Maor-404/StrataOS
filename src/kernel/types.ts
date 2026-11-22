@@ -79,6 +79,8 @@ export interface KernelMetrics {
   status: KernelStatus
   bootStage: string
   kernelBanner: string
+  distroLabel: string
+  bootTimeMs: number
   uptimeMs: number
   memoryMiB: number
   cpus: number

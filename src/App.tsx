@@ -1,6 +1,7 @@
-import { Edit3, Layers, Search, Sliders, Terminal } from 'lucide-react'
+import { Award, Edit3, Layers, Search, Sliders, Terminal } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Toaster } from 'sonner'
+import { FlexCardModal } from './components/FlexCardModal'
 import { kernelClient } from './kernel/kernelClient'
 import { AboutModal } from './shell/AboutModal'
 import { AppIcon } from './shell/AppIcon'
@@ -15,7 +16,10 @@ import { StrataUEFI } from './shell/StrataUEFI'
 import { TimeMachineDrawer } from './shell/TimeMachineDrawer'
 import { WebGpuComputeWallpaper } from './shell/WebGpuComputeWallpaper'
 import { WindowManager } from './shell/WindowManager'
+import { STRATA_CONFIG } from './strata.config'
 import {
+  GLOBAL_THEMES,
+  getPanelHeight,
   NATIVE_APPS,
   useOsStore,
   type NativeAppId,
@@ -24,24 +28,32 @@ import {
 } from './state/osStore'
 
 const WALLPAPER_STYLES: Record<WallpaperId, string> = {
+  'debian-swirl':
+    'radial-gradient(ellipse at 78% 18%, rgba(215, 10, 83, 0.22) 0%, rgba(22, 19, 23, 0.96) 54%, #0f0c11 100%)',
   'obsidian-grid':
-    'radial-gradient(ellipse at 20% 14%, rgba(61, 174, 233, 0.14) 0%, rgba(27, 30, 32, 0.96) 52%, #111316 100%)',
+    'radial-gradient(ellipse at 20% 14%, rgba(56, 189, 248, 0.14) 0%, rgba(11, 13, 16, 0.98) 54%, #06080b 100%)',
   'carbon-slate':
     'radial-gradient(circle at 22% 20%, #232a34 0%, #14171c 76%)',
   'midnight-aurora':
     'radial-gradient(circle at 80% 15%, #102a36 0%, #11151b 70%)',
   'deep-abyss': 'linear-gradient(180deg, #111316 0%, #07080a 100%)',
+  'lxqt-frost':
+    'radial-gradient(ellipse at 22% 16%, rgba(61, 174, 233, 0.22) 0%, #e5ebf1 55%, #d2dce7 100%)',
   'webgpu-compute': 'radial-gradient(circle at 50% 50%, #121c28 0%, #111316 80%)',
 }
 
 const LIGHT_WALLPAPER_STYLES: Record<WallpaperId, string> = {
+  'debian-swirl':
+    'radial-gradient(ellipse at 78% 18%, rgba(215, 10, 83, 0.14) 0%, #edf0f3 55%, #dce3eb 100%)',
   'obsidian-grid':
-    'radial-gradient(ellipse at 20% 14%, rgba(61, 174, 233, 0.22) 0%, #dfe5ec 55%, #cfd8e3 100%)',
+    'radial-gradient(ellipse at 20% 14%, rgba(61, 174, 233, 0.20) 0%, #dfe5ec 55%, #cfd8e3 100%)',
   'carbon-slate':
     'radial-gradient(circle at 22% 20%, #e7edf4 0%, #cbd5e1 78%)',
   'midnight-aurora':
     'radial-gradient(circle at 80% 15%, #cbe9f6 0%, #dde6ef 70%)',
   'deep-abyss': 'linear-gradient(180deg, #eceff2 0%, #d8dfe7 100%)',
+  'lxqt-frost':
+    'radial-gradient(ellipse at 22% 16%, rgba(61, 174, 233, 0.22) 0%, #eff2f5 55%, #d9e2ec 100%)',
   'webgpu-compute': 'radial-gradient(circle at 50% 50%, #d7ecf7 0%, #e4e9ef 80%)',
 }
 
@@ -66,36 +78,45 @@ function resolveTheme(mode: ThemeMode): 'dark' | 'light' {
 
 export const App: React.FC = () => {
   const wallpaper = useOsStore((s) => s.settings.wallpaper)
+  const globalTheme = useOsStore((s) => s.settings.globalTheme)
   const theme = useOsStore((s) => s.settings.theme)
   const accentHex = useOsStore((s) => s.settings.accentHex)
+  const featherMode = useOsStore((s) => s.settings.featherMode)
   const panelPosition = useOsStore((s) => s.settings.panelPosition)
+  const panelStyle = useOsStore((s) => s.settings.panelStyle)
   const editMode = useOsStore((s) => s.editMode)
+  const kernelStatus = useOsStore((s) => s.kernelStatus)
   const installedPackages = useOsStore((s) => s.installedPackages)
 
   const setKernelStatus = useOsStore((s) => s.setKernelStatus)
   const setWorkerLatency = useOsStore((s) => s.setWorkerLatency)
+  const setBootTimeMs = useOsStore((s) => s.setBootTimeMs)
   const setInstalledPackages = useOsStore((s) => s.setInstalledPackages)
   const openApp = useOsStore((s) => s.openApp)
   const closeAppByPkgId = useOsStore((s) => s.closeAppByPkgId)
+  const commitWindowBounds = useOsStore((s) => s.commitWindowBounds)
   const toggleCommandPalette = useOsStore((s) => s.toggleCommandPalette)
   const toggleMissionControl = useOsStore((s) => s.toggleMissionControl)
   const setWorkspace = useOsStore((s) => s.setActiveWorkspace)
   const setBootPhase = useOsStore((s) => s.setBootPhase)
   const setEditMode = useOsStore((s) => s.setEditMode)
+  const setFlexCardOpen = useOsStore((s) => s.setFlexCardOpen)
   const updateSettings = useOsStore((s) => s.updateSettings)
   const hydratePreferences = useOsStore((s) => s.hydratePreferences)
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [resolvedScheme, setResolvedScheme] = useState<'dark' | 'light'>(() => resolveTheme(theme))
 
-  // Sync Breeze theme + Plasma accent + <meta name="color-scheme"> + cross-tab storage
+  // Sync Plasma/LXQt global theme + color-scheme + Feather Mode + accent CSS vars
   useEffect(() => {
     const resolved = resolveTheme(theme)
     setResolvedScheme(resolved)
 
     const root = document.documentElement
     root.setAttribute('data-theme', resolved)
-    root.style.setProperty('--plasma-accent', accentHex || '#3daee9')
+    root.setAttribute('data-global-theme', globalTheme)
+    root.setAttribute('data-feather-mode', featherMode ? 'true' : 'false')
+    root.style.setProperty('--plasma-accent', accentHex || '#d70a53')
 
     const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')
     if (meta) {
@@ -111,7 +132,21 @@ export const App: React.FC = () => {
     } catch {
       // ignore storage restrictions
     }
-  }, [theme, accentHex])
+  }, [theme, globalTheme, accentHex, featherMode])
+
+  // Keep /etc/strata/runtime.env synced so `stratafetch` always prints the active theme & panel mode
+  useEffect(() => {
+    if (kernelStatus !== 'online') return
+    const preset = GLOBAL_THEMES[globalTheme] ?? GLOBAL_THEMES['debian-crimson']
+    void kernelClient
+      .setRuntimeMeta({
+        activeTheme: preset.name,
+        panelMode: panelStyle === 'lxqt-compact' ? 'LXQt 32px Classic' : 'Plasma Floating',
+        featherMode: featherMode ? 'ON' : 'OFF',
+        siteUrl: STRATA_CONFIG.liveDemoUrl,
+      })
+      .catch(() => {})
+  }, [kernelStatus, globalTheme, panelStyle, featherMode])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -138,7 +173,7 @@ export const App: React.FC = () => {
     }
   }, [updateSettings])
 
-  // Boot Linux kernel worker & hydrate preferences
+  // Boot Minimal Debian Linux kernel worker & handle deep links (?showcase=1, ?app=, ?install=)
   useEffect(() => {
     ;(window as unknown as Record<string, unknown>).__strata = {
       kernelClient,
@@ -165,16 +200,46 @@ export const App: React.FC = () => {
     void kernelClient
       .boot()
       .then(async () => {
-        const pkgs = await kernelClient.getInstalledPackages()
+        const [pkgs, metrics] = await Promise.all([
+          kernelClient.getInstalledPackages(),
+          kernelClient.getMetrics().catch(() => null),
+        ])
         setInstalledPackages(pkgs)
+        if (metrics?.bootTimeMs) {
+          setBootTimeMs(metrics.bootTimeMs)
+        }
 
-        // Handle deep-link query parameters (?app=webgpu, ?app=store, ?install=pixelsynth)
         const params = new URLSearchParams(window.location.search)
+        const isShowcase = params.get('showcase') === '1'
         const appParam = params.get('app')?.trim().toLowerCase()
         const installParam = params.get('install')?.trim().toLowerCase()
+
+        if (isShowcase) {
+          // Instant-Wow 2-window layout: Left = Terminal running stratafetch, Right = WebGPU Studio or ByteScope
+          openApp('terminal')
+          let rightApp: NativeAppId = 'bytescope'
+          try {
+            const nav = navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }
+            if (nav.gpu && (await nav.gpu.requestAdapter())) {
+              rightApp = 'gpu-studio'
+            }
+          } catch {
+            rightApp = 'bytescope'
+          }
+          openApp(rightApp)
+          commitWindowBounds('win-terminal', { x: 0, y: 0, width: 640, height: 520 }, 'left')
+          commitWindowBounds(`win-${rightApp}`, { x: 640, y: 0, width: 640, height: 520 }, 'right')
+          setTimeout(() => {
+            kernelClient.sendCommandToTerminal('stratafetch')
+          }, 350)
+          return
+        }
+
         if (appParam) {
           if (appParam === 'uefi') {
             setBootPhase('uefi-setup')
+          } else if (appParam === 'flex') {
+            setFlexCardOpen(true)
           } else {
             const mapped = APP_DEEP_LINK_ALIASES[appParam] ?? appParam
             if (mapped in NATIVE_APPS) {
@@ -213,13 +278,16 @@ export const App: React.FC = () => {
     hydratePreferences,
     setKernelStatus,
     setInstalledPackages,
+    setBootTimeMs,
     openApp,
     closeAppByPkgId,
+    commitWindowBounds,
     setWorkerLatency,
     setBootPhase,
+    setFlexCardOpen,
   ])
 
-  // Global Plasma & KWin Shortcuts (Alt+Space / Ctrl+K -> KRunner, Ctrl+Up / Alt+Tab -> Overview, Alt+1/2/3)
+  // Global Plasma & LXQt Shortcuts (Alt+Space / Ctrl+K -> Runner, Ctrl+Up / Alt+Tab -> Overview, Alt+1/2/3)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -288,12 +356,11 @@ export const App: React.FC = () => {
   }, [installedPackages, openApp])
 
   const handleDesktopContextMenu = (e: React.MouseEvent<HTMLElement>) => {
-    // Only open desktop context menu when right-clicking the desktop backdrop (not inside windows)
     const target = e.target as HTMLElement
-    if (target.closest('[data-window-id], #plasma-panel, [popover], #live-proof-card')) return
+    if (target.closest('[data-window-id], #plasma-panel, [popover], #live-proof-card, dialog')) return
     e.preventDefault()
-    const menuW = 220
-    const menuH = 220
+    const menuW = 224
+    const menuH = 250
     const x = Math.min(e.clientX, window.innerWidth - menuW - 10)
     const y = Math.min(e.clientY, window.innerHeight - menuH - 10)
     setContextMenu({ x: Math.max(8, x), y: Math.max(8, y) })
@@ -301,8 +368,10 @@ export const App: React.FC = () => {
 
   const wallpaperBg =
     resolvedScheme === 'light'
-      ? LIGHT_WALLPAPER_STYLES[wallpaper] ?? LIGHT_WALLPAPER_STYLES['obsidian-grid']
-      : WALLPAPER_STYLES[wallpaper] ?? WALLPAPER_STYLES['obsidian-grid']
+      ? LIGHT_WALLPAPER_STYLES[wallpaper] ?? LIGHT_WALLPAPER_STYLES['lxqt-frost']
+      : WALLPAPER_STYLES[wallpaper] ?? WALLPAPER_STYLES['debian-swirl']
+
+  const panelH = getPanelHeight(panelStyle)
 
   return (
     <main
@@ -312,14 +381,14 @@ export const App: React.FC = () => {
     >
       {/* Hidden h1 for accessibility & SEO */}
       <h1 className="sr-only">
-        StrataOS v1.0.0 (Bedrock) — Real Linux 7.3 Kernel &amp; KDE Plasma 6 Desktop in One Tab
+        StrataOS v1.0.0 (Bedrock) — Minimal Debian GNU/Linux 7.3 &amp; Lightweight Plasma/LXQt Desktop in One Tab
       </h1>
 
-      {/* Sonner Toast Notifications (KDE Plasma bottom-right above System Tray) */}
+      {/* Sonner Toast Notifications (bottom-right above System Tray) */}
       <Toaster
         theme={resolvedScheme}
         position="bottom-right"
-        offset={58}
+        offset={panelH + 14}
         richColors
         toastOptions={{
           style: {
@@ -333,12 +402,29 @@ export const App: React.FC = () => {
       {/* StrataUEFI Pre-Boot Firmware & POST Splash */}
       <StrataUEFI />
 
-      {/* Desktop Canvas (zooms out slightly in Plasma Desktop Edit Mode) */}
+      {/* Desktop Canvas (zooms out slightly in Desktop Edit Mode) */}
       <div
         data-edit-mode={editMode ? 'true' : 'false'}
         className="plasma-desktop-canvas relative h-full w-full overflow-hidden"
         style={{ background: wallpaperBg }}
       >
+        {/* Subtle Procedural Debian Crimson Swirl Watermark */}
+        {wallpaper === 'debian-swirl' && (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 600 600"
+            className="pointer-events-none fixed right-[-60px] bottom-[-40px] h-[520px] w-[520px] opacity-[0.12]"
+          >
+            <path
+              d="M315 110c-108 0-195 85-195 190 0 88 68 158 154 158 72 0 128-55 128-124 0-56-42-98-95-98-42 0-74 31-74 70 0 30 22 52 50 52 21 0 36-15 36-34 0-13-9-22-21-22-8 0-14 6-14 14"
+              fill="none"
+              stroke="var(--plasma-accent)"
+              strokeWidth="18"
+              strokeLinecap="round"
+            />
+          </svg>
+        )}
+
         {/* Optional WebGPU 120fps WGSL Compute Wallpaper */}
         <WebGpuComputeWallpaper />
 
@@ -346,18 +432,18 @@ export const App: React.FC = () => {
         <section
           aria-label="Desktop Shortcuts"
           style={{
-            top: panelPosition === 'top' ? '64px' : '16px',
+            top: panelPosition === 'top' ? `${panelH + 16}px` : '14px',
           }}
-          className="fixed left-3 z-[8] flex flex-col flex-wrap gap-1.5 max-h-[calc(100vh-88px)]"
+          className="fixed left-3 z-[8] flex flex-col flex-wrap gap-1.5 max-h-[calc(100vh-80px)]"
         >
           {desktopShortcuts.map((sc) => (
             <button
               key={sc.id}
               type="button"
               onClick={sc.onOpen}
-              className="group flex w-20 flex-col items-center gap-1 rounded-xl border border-transparent p-1.5 text-center hover:border-[var(--breeze-border-strong)] hover:bg-[var(--breeze-hover)] transition cursor-pointer"
+              className="group flex w-20 flex-col items-center gap-1 rounded-lg border border-transparent p-1.5 text-center hover:border-[var(--breeze-border-strong)] hover:bg-[var(--breeze-hover)] transition duration-120 cursor-pointer"
             >
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--breeze-border)] bg-[var(--breeze-view)]/90 plasma-accent-text shadow-md group-hover:border-[var(--plasma-accent)]">
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-view)]/95 plasma-accent-text shadow-sm group-hover:border-[var(--plasma-accent)]">
                 <AppIcon name={sc.icon} appId={sc.id} className="h-4 w-4" />
                 {sc.badge && (
                   <span className="absolute -top-1 -right-1 rounded bg-emerald-500 px-1 py-0.2 font-mono text-[8px] font-bold text-zinc-950">
@@ -367,7 +453,7 @@ export const App: React.FC = () => {
               </div>
               <span
                 className={`line-clamp-2 text-[11px] font-medium leading-tight drop-shadow ${
-                  resolvedScheme === 'light' ? 'text-[#1b1e20]' : 'text-[#eff0f1]'
+                  resolvedScheme === 'light' ? 'text-[#1b1e20]' : 'text-[#f3eff5]'
                 }`}
               >
                 {sc.label}
@@ -376,7 +462,7 @@ export const App: React.FC = () => {
           ))}
         </section>
 
-        {/* Window Manager Surface (KWin Breeze) */}
+        {/* Window Manager Surface (KWin / Openbox) */}
         <WindowManager />
 
         {/* Persisted Draggable Plasmoids & Desktop Edit Mode Toolbar */}
@@ -413,7 +499,7 @@ export const App: React.FC = () => {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] cursor-pointer"
           >
             <Search className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
-            <span>Open KRunner</span>
+            <span>Open Top Runner</span>
           </button>
           <button
             type="button"
@@ -426,6 +512,17 @@ export const App: React.FC = () => {
             <Layers className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
             <span>Plasma Overview</span>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setContextMenu(null)
+              setFlexCardOpen(true)
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] cursor-pointer"
+          >
+            <Award className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
+            <span>StrataFlex Proof Card (PNG)</span>
+          </button>
           <div className="my-1 border-t border-[var(--breeze-border)]" />
           <button
             type="button"
@@ -436,7 +533,7 @@ export const App: React.FC = () => {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] cursor-pointer"
           >
             <Terminal className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
-            <span>Open Strata Terminal</span>
+            <span>Open Debian Terminal</span>
           </button>
           <button
             type="button"
@@ -447,7 +544,7 @@ export const App: React.FC = () => {
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--breeze-hover)] cursor-pointer"
           >
             <Sliders className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
-            <span>Configure Breeze &amp; Display</span>
+            <span>Configure Plasma/LXQt Themes</span>
           </button>
         </div>
       )}
@@ -455,7 +552,10 @@ export const App: React.FC = () => {
       {/* 10-Second First-Visit Live Proof Card */}
       <LiveProofCard />
 
-      {/* Floating KDE Plasma 6 Panel (Kickoff + Task Manager + System Tray + Clock + Peek) */}
+      {/* StrataFlex 1200x630 PNG Proof Card Modal */}
+      <FlexCardModal />
+
+      {/* Floating Plasma (44px) / LXQt Classic (32px) Panel */}
       <PlasmaPanel />
 
       {/* Plasma Overview & Virtual Desktops 1–3 (Ctrl+Up / Alt+Tab) */}
@@ -464,7 +564,7 @@ export const App: React.FC = () => {
       {/* Time Machine Snapshots & System Control Drawer */}
       <TimeMachineDrawer />
 
-      {/* Top-Center KRunner Overlay (Alt+Space / Ctrl+K) */}
+      {/* Top-Center KRunner / LXQt Runner Overlay (Alt+Space / Ctrl+K) */}
       <CommandPalette />
 
       {/* About StrataOS Modal */}

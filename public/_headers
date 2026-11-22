@@ -5,10 +5,16 @@
 
 /*.wasm
   Content-Type: application/wasm
-  Cross-Origin-Resource-Policy: same-origin
+  Cross-Origin-Resource-Policy: cross-origin
+  Access-Control-Allow-Origin: *
+
+/kernel/*
+  Cross-Origin-Resource-Policy: cross-origin
+  Access-Control-Allow-Origin: *
 
 /registry/*
-  Cross-Origin-Resource-Policy: same-origin
+  Cross-Origin-Resource-Policy: cross-origin
+  Access-Control-Allow-Origin: *
   Cache-Control: public, max-age=3600
 
 /assets/*

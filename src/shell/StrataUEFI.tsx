@@ -15,13 +15,13 @@ import { STRATA_CONFIG } from '../strata.config'
 const BOOT_TARGETS: Array<{ id: BootTarget; label: string; desc: string }> = [
   {
     id: 'desktop',
-    label: 'StrataOS v1.0.0 ("Bedrock") Graphical Desktop',
-    desc: 'Default 120fps compositor + Linux 7.3.4 unkernel Web Worker + strataget',
+    label: 'StrataOS — Minimal Debian (Linux 7.x)',
+    desc: 'Default Debian GNU/Linux Bedrock userland + Lightweight Plasma/LXQt shell + strataget',
   },
   {
     id: 'tty-recovery',
-    label: 'Linux 7.3.4 Full-Screen TTY Recovery Console',
-    desc: 'Direct /dev/pts/0 root shell without desktop window manager overhead',
+    label: 'Minimal TTY Recovery Shell (Linux 7.x)',
+    desc: 'Direct /dev/pts/0 Debian root console without desktop window manager overhead',
   },
   {
     id: 'uefi-shell',
@@ -30,8 +30,8 @@ const BOOT_TARGETS: Array<{ id: BootTarget; label: string; desc: string }> = [
   },
   {
     id: 'safe-mode',
-    label: 'StrataOS Safe Mode (Low-VRAM / Blur Disabled)',
-    desc: 'Boots graphical desktop with Performance Mode enabled and zero GPU shaders',
+    label: 'StrataOS Safe Mode (LXQt Feather / Low-VRAM)',
+    desc: 'Boots Debian desktop with LXQt Feather Mode (zero blur, zero GPU shaders)',
   },
 ]
 

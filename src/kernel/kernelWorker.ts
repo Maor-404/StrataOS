@@ -22,6 +22,7 @@ import type {
   RegistryIndex,
   StratagetProgressEvent,
 } from './types'
+import { tryOpenChunkedDebianDistro } from './chunkedRootfs'
 import { runWasiCliPackage } from './wasiRunner'
 
 const BATCH_INTERVAL_MS = 16
@@ -119,6 +120,14 @@ class StrataKernelWorker {
   private status: KernelStatus = 'booting'
   private bootStage = 'Initializing WebWorker...'
   private kernelBanner = 'Linux version 7.3.4-unkernel (arch/wasm SMP)'
+  private distroLabel = 'Debian GNU/Linux (StrataOS Bedrock Edition)'
+  private bootTimeMs = 0
+  private runtimeMeta = {
+    activeTheme: 'Debian Crimson',
+    panelMode: 'Plasma Floating',
+    featherMode: 'OFF',
+    siteUrl: 'https://strata-os.pages.dev',
+  }
   private dmesgLogs: DmesgEntry[] = []
   private nextDmesgId = 1
   private bootPromise: Promise<void> | null = null
@@ -212,6 +221,7 @@ class StrataKernelWorker {
   }
 
   private async performBoot(): Promise<void> {
+    const bootT0 = performance.now()
     try {
       this.setStatus('booting', 'Checking WebAssembly & JSPI support...')
 
@@ -221,10 +231,19 @@ class StrataKernelWorker {
         },
       })
 
+      this.setStatus('booting', 'Probing Minimal Debian GNU/Linux rootfs...')
+      const chunkedDebian = await tryOpenChunkedDebianDistro('/kernel/debian-manifest.json', (m) =>
+        this.appendDmesgLine(m)
+      )
+      this.distroLabel = chunkedDebian
+        ? 'Debian GNU/Linux 13 (Chunked EROFS • StrataOS Bedrock)'
+        : 'Debian GNU/Linux (StrataOS Bedrock Edition)'
+
       this.setStatus('booting', 'Compiling Linux 7.3.4 WASM kernel...')
 
       const vm = await createKernel({
         kernel: kernelWasmUrl,
+        ...(chunkedDebian ? { distro: chunkedDebian } : {}),
         disks: [{ kind: 'data', template: 'bundled', mode: 'persistent' }],
         vsock: true,
         shm: true,
@@ -244,7 +263,7 @@ class StrataKernelWorker {
           } else if (p.stage === 'instantiate') {
             this.setStatus('booting', 'Instantiating Linux kernel & MMU...')
           } else if (p.stage === 'start') {
-            this.setStatus('booting', 'Mounting filesystems & starting init...')
+            this.setStatus('booting', 'Mounting Debian filesystems & starting init...')
           }
         },
         onOutput: (bytes) => {
@@ -266,11 +285,16 @@ class StrataKernelWorker {
         this.setStatus('halted', `Halted (${res.kind})`)
       })
 
-      this.setStatus('booting', 'Provisioning persistent ext4 /data mounts & strataget...')
+      this.setStatus('booting', 'Provisioning Minimal Debian ext4 mounts, stratafetch & strataget...')
+      this.bootTimeMs = Math.max(1, Math.round(performance.now() - bootT0))
       await this.provisionGuestFilesystem()
+      this.bootTimeMs = Math.max(1, Math.round(performance.now() - bootT0))
+      await this.syncRuntimeEnv()
 
-      this.setStatus('online', 'Linux 7.3.4 Online')
-      this.appendDmesgLine('[strata] StrataOS compositor & strataget bridge ready.')
+      this.setStatus('online', `Debian Linux 7.3.4 Online (${this.bootTimeMs}ms)`)
+      this.appendDmesgLine(
+        `[strata] ${this.distroLabel} ready in ${this.bootTimeMs}ms.`
+      )
 
       const installedList = await this.getInstalledPackages()
       this.notifyPackagesChanged(installedList)
@@ -307,7 +331,7 @@ else
   mkdir -p /opt/strata/apps /etc/strata /usr/local/bin /root /home/strata
 fi
 
-mkdir -p /opt/strata/apps /etc/strata /usr/local/bin /root /home/strata
+mkdir -p /opt/strata/apps /etc/strata /usr/local/bin /root /root/Desktop /root/.local/share/Trash /home/strata /mnt/host
 
 cat << 'EOF' > /etc/profile
 export PATH=/usr/local/bin:/run/kw/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -316,7 +340,7 @@ export USER=root
 export LOGNAME=root
 export TERM=xterm-256color
 [ "$PWD" = "/" ] && cd /root
-PS1='\\[\\033[1;36m\\]root@strataos\\[\\033[0m\\]:\\[\\033[1;34m\\]\\w\\[\\033[0m\\]# '
+PS1='\\[\\033[1;31m\\]root@debian-strata\\[\\033[0m\\]:\\[\\033[1;36m\\]\\w\\[\\033[0m\\]# '
 EOF
 
 cat << 'EOF' > /usr/local/bin/strataget
@@ -326,15 +350,61 @@ EOF
 chmod +x /usr/local/bin/strataget
 
 cat << 'EOF' > /etc/os-release
-NAME="StrataOS"
-VERSION="1.0.0 (Bedrock)"
-ID=strataos
-VERSION_ID="1.0.0"
-PRETTY_NAME="StrataOS v1.0.0 (Bedrock) — Linux 7.3.4 / unkernel WASM"
-HOME_URL="https://github.com/Maor-404/StrataOS"
+PRETTY_NAME="Debian GNU/Linux (StrataOS Bedrock Edition)"
+NAME="Debian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie — StrataOS Bedrock v1.0.0)"
+VERSION_CODENAME=trixie
+ID=debian
+ID_LIKE=debian
+HOME_URL="https://strata-os.pages.dev"
+SUPPORT_URL="https://github.com/Maor-404/StrataOS"
 EOF
+
+echo "13.0 (StrataOS Bedrock)" > /etc/debian_version
 `
     await this.vm.exec('/bin/sh', ['-c', bootScript])
+
+    const stratafetchScript = [
+      '#!/bin/sh',
+      'BOOT_TIME_MS="—"',
+      'ACTIVE_THEME="Debian Crimson"',
+      'PANEL_MODE="Plasma Floating"',
+      'FEATHER_MODE="OFF"',
+      'SITE_URL="https://strata-os.pages.dev"',
+      '[ -f /etc/strata/runtime.env ] && . /etc/strata/runtime.env',
+      '',
+      'KERNEL_REL=$(uname -r 2>/dev/null || echo "7.3.4-unkernel")',
+      'ARCH_NAME=$(uname -m 2>/dev/null || echo "aarch64")',
+      'MEM_LINE=$(awk \'/MemTotal/{t=$2} /MemAvailable/{a=$2} END{if(t>0){printf "%d MiB / %d MiB", (t-a)/1024, t/1024}else{print "512 MiB"}}\' /proc/meminfo 2>/dev/null)',
+      'DISK_LINE=$(df -h /data 2>/dev/null | awk \'NR==2{printf "%s / %s (%s) ext4", $3, $2, $5}\')',
+      '[ -z "$DISK_LINE" ] && DISK_LINE="IndexedDB ext4 (persistent)"',
+      'PKG_COUNT=$(grep -c \'"installedAt"\' /etc/strata/installed.json 2>/dev/null); [ -z "$PKG_COUNT" ] && PKG_COUNT=0',
+      '',
+      "R='\\033[1;31m'",
+      "W='\\033[1;37m'",
+      "C='\\033[36m'",
+      "D='\\033[90m'",
+      "N='\\033[0m'",
+      '',
+      'printf "\\n"',
+      'printf "  ${R}       _,met\\$\\$\\$\\$\\$gg.          ${W}root@debian-strata${N}\\n"',
+      'printf "  ${R}    ,g\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$\\$P.       ${D}----------------------------------------${N}\\n"',
+      'printf "  ${R}  ,g\\$\\$P\\"     \\"\\"\\"Y\\$\\$.\\".        ${R}OS:${N}       Debian GNU/Linux (StrataOS Bedrock)\\n"',
+      'printf "  ${R} ,\\$\\$P\'              \\`\\$\\$\\$.     ${R}Kernel:${N}   Linux %s (%s)\\n" "$KERNEL_REL" "$ARCH_NAME"',
+      'printf "  ${R}\',\\$\\$P       ,ggs.     \\`\\$\\$b:   ${R}Boot:${N}     %s ms (Browser WebWorker WASM)\\n" "$BOOT_TIME_MS"',
+      'printf "  ${R}\\`d\\$\\$\'     ,\\$P\\"\'   .    \\$\\$\\$    ${R}DE/Shell:${N} Plasma 6 / LXQt (%s)\\n" "$PANEL_MODE"',
+      'printf "  ${R} \\$\\$P      d\\$\'     ,    \\$\\$P    ${R}Theme:${N}    %s (Feather: %s)\\n" "$ACTIVE_THEME" "$FEATHER_MODE"',
+      'printf "  ${R} \\$\\$:      \\$\\$.   -    ,d\\$\\$\'    ${R}Memory:${N}   %s\\n" "$MEM_LINE"',
+      'printf "  ${R} \\$\\$;      Y\\$b._   _,d\\$P\'      ${R}Storage:${N}  %s\\n" "$DISK_LINE"',
+      'printf "  ${R} Y\\$\\$.    \\`.\\`\\"Y\\$\\$\\$\\$P\\"\'         ${R}Packages:${N} %s installed (strataget)\\n" "$PKG_COUNT"',
+      'printf "  ${R} \\`\\$\\$b      \\"-.__              ${R}Live URL:${N} ${C}%s${N}\\n" "$SITE_URL"',
+      'printf "  ${R}  \\`Y\\$\\$                        ${D}StrataOS v1.0.0 Bedrock • Zero Backend${N}\\n"',
+      'printf "\\n"',
+    ].join('\n') + '\n'
+
+    await this.writeFileTextInternal('/usr/local/bin/stratafetch', stratafetchScript)
+    await this.vm.exec('/bin/chmod', ['+x', '/usr/local/bin/stratafetch'])
 
     // Capture full kernel dmesg buffer
     const dmesgRes = await this.vm.exec('/bin/dmesg', [])
@@ -507,8 +577,8 @@ EOF
       sessionState.pty = pty
 
       const banner = this.encoder.encode(
-        `\x1b[1;36mStrataOS v1.0.0 ("Bedrock")\x1b[0m \x1b[90m(Linux 7.3.4-unkernel wasm32 / aarch64-kwemu, tty /dev/pts/${pty.pts})\x1b[0m\r\n` +
-          `\x1b[90mType \x1b[36mstrataget --help\x1b[90m to manage community WebAssembly packages.\x1b[0m\r\n\r\n`
+        `\x1b[1;31mDebian GNU/Linux\x1b[0m \x1b[1;37m(StrataOS v1.0.0 "Bedrock")\x1b[0m \x1b[90m(Linux 7.3.4-unkernel, tty /dev/pts/${pty.pts})\x1b[0m\r\n` +
+          `\x1b[90mType \x1b[1;31mstratafetch\x1b[90m for live system telemetry or \x1b[36mstrataget --help\x1b[90m for WASM packages.\x1b[0m\r\n\r\n`
       )
       enqueueChunk(banner)
 
@@ -1261,12 +1331,41 @@ done
     return performance.now()
   }
 
+  private async syncRuntimeEnv(): Promise<void> {
+    if (!this.vm) return
+    const safe = (v: string) => v.replace(/['"\n\r]/g, '')
+    const envBody = [
+      `BOOT_TIME_MS="${this.bootTimeMs}"`,
+      `ACTIVE_THEME="${safe(this.runtimeMeta.activeTheme)}"`,
+      `PANEL_MODE="${safe(this.runtimeMeta.panelMode)}"`,
+      `FEATHER_MODE="${safe(this.runtimeMeta.featherMode)}"`,
+      `SITE_URL="${safe(this.runtimeMeta.siteUrl)}"`,
+    ].join('\n') + '\n'
+    try {
+      await this.writeFileTextInternal('/etc/strata/runtime.env', envBody)
+    } catch {
+      // ignore if guest not mounted yet
+    }
+  }
+
+  async setRuntimeMeta(meta: {
+    activeTheme?: string
+    panelMode?: string
+    featherMode?: string
+    siteUrl?: string
+  }): Promise<void> {
+    this.runtimeMeta = { ...this.runtimeMeta, ...meta }
+    await this.syncRuntimeEnv()
+  }
+
   async getMetrics(): Promise<KernelMetrics> {
     if (!this.vm) {
       return {
         status: this.status,
         bootStage: this.bootStage,
         kernelBanner: this.kernelBanner,
+        distroLabel: this.distroLabel,
+        bootTimeMs: this.bootTimeMs,
         uptimeMs: 0,
         memoryMiB: 0,
         cpus: 1,
@@ -1290,6 +1389,8 @@ done
       status: this.status,
       bootStage: this.bootStage,
       kernelBanner: this.kernelBanner,
+      distroLabel: this.distroLabel,
+      bootTimeMs: this.bootTimeMs,
       uptimeMs: st.uptimeMs,
       memoryMiB: this.vm.memoryMiB,
       cpus: st.cpus,

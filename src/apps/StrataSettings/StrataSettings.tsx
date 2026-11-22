@@ -4,12 +4,14 @@ import {
   Check,
   Cpu,
   Edit3,
+  Feather,
   Flame,
   Gauge,
   Keyboard,
   Monitor,
   Moon,
   Palette,
+  PanelBottom,
   Shield,
   Sparkles,
   Sun,
@@ -18,60 +20,63 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import {
+  GLOBAL_THEMES,
   useOsStore,
   type AccentColorId,
+  type GlobalThemeId,
   type ThemeMode,
   type WallpaperId,
 } from '../../state/osStore'
 
 const WALLPAPERS: Array<{ id: WallpaperId; name: string; desc: string; previewStyle: string }> = [
   {
-    id: 'obsidian-grid',
-    name: 'Obsidian Matte',
-    desc: 'Deep charcoal micro-grain studio surface',
-    previewStyle: 'linear-gradient(145deg, #1b1e20 0%, #111318 55%, #08090c 100%)',
+    id: 'debian-swirl',
+    name: 'Debian Crimson Swirl',
+    desc: 'Warm obsidian slate with subtle Debian ruby spiral glow',
+    previewStyle: 'radial-gradient(circle at 25% 20%, rgba(215,10,83,0.42) 0%, #161317 65%)',
   },
   {
-    id: 'carbon-slate',
-    name: 'Carbon Slate',
-    desc: 'Tactile dark slate with subtle radial falloff',
-    previewStyle: 'radial-gradient(circle at 20% 20%, #1e2733 0%, #101318 75%)',
+    id: 'obsidian-grid',
+    name: 'Strata Obsidian',
+    desc: 'Obsidian titanium charcoal with restrained ice-blue edge',
+    previewStyle: 'linear-gradient(145deg, #0b0d10 0%, #131c28 55%, #07080a 100%)',
   },
   {
     id: 'midnight-aurora',
     name: 'Nordic Horizon',
-    desc: 'Muted deep teal-slate atmospheric glow',
+    desc: 'Muted deep teal-slate atmospheric falloff',
     previewStyle: 'radial-gradient(circle at 80% 15%, #0d2a36 0%, #10151b 65%, #080a0d 100%)',
   },
   {
-    id: 'deep-abyss',
-    name: 'Pure OLED Abyss',
-    desc: 'Zero-luminance pitch black for maximum contrast',
-    previewStyle: 'linear-gradient(180deg, #060709 0%, #000000 100%)',
+    id: 'lxqt-frost',
+    name: 'LXQt Frost Daylight',
+    desc: 'Clean high-contrast daylight canvas for Breeze Light',
+    previewStyle: 'linear-gradient(145deg, #eff0f1 0%, #d4dde8 100%)',
   },
 ]
 
 const ACCENT_PRESETS: Array<{ id: AccentColorId; label: string; hex: string }> = [
-  { id: 'sky', label: 'Plasma Blue', hex: '#3daee9' },
-  { id: 'cyan', label: 'Strata Cyan', hex: '#22d3ee' },
+  { id: 'rose', label: 'Debian Ruby', hex: '#d70a53' },
+  { id: 'sky', label: 'Ice Blue', hex: '#38bdf8' },
+  { id: 'cyan', label: 'Plasma Blue', hex: '#3daee9' },
   { id: 'emerald', label: 'Kernel Emerald', hex: '#10b981' },
   { id: 'amber', label: 'Phosphor Amber', hex: '#f59e0b' },
-  { id: 'rose', label: 'Breeze Crimson', hex: '#da4453' },
 ]
 
 const SHORTCUTS = [
-  { keys: 'Alt + Space / Ctrl + K', desc: 'Open KRunner (Apps, /root, strataget, Inline Math)' },
+  { keys: 'Alt + Space / Ctrl + K', desc: 'Open Top-Center Runner (Math, /root, strataget, Apps)' },
   { keys: 'Ctrl + Up / Alt + Tab', desc: 'Open Plasma Overview & Virtual Desktops 1–3' },
   { keys: 'Alt + 1 / 2 / 3', desc: 'Switch Active Virtual Desktop (1–3)' },
   { keys: 'Right-Click Desktop', desc: 'Enter Desktop Edit Mode (Add & Drag Plasmoids)' },
   { keys: 'F2 / DEL (During POST)', desc: 'Enter StrataUEFI Firmware Setup Utility' },
-  { keys: 'Ctrl + S', desc: 'Save Active Buffer in Strata Studio / Code to Linux ext4 FS' },
+  { keys: 'Ctrl + S', desc: 'Save Active Buffer in Strata Studio / Code to Debian ext4 FS' },
   { keys: 'Drag Window to Left / Right / Top', desc: 'KWin 50% Split-Screen Tile or Flush Maximize' },
 ]
 
 export const StrataSettings: React.FC = () => {
   const settings = useOsStore((s) => s.settings)
   const updateSettings = useOsStore((s) => s.updateSettings)
+  const applyGlobalTheme = useOsStore((s) => s.applyGlobalTheme)
   const webgpuWallpaperEnabled = settings.webgpuWallpaperEnabled
   const setWebgpuWallpaper = (val: boolean) => updateSettings({ webgpuWallpaperEnabled: val })
   const wakeLockActive = useOsStore((s) => s.wakeLockActive)
@@ -89,32 +94,73 @@ export const StrataSettings: React.FC = () => {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-[var(--breeze-base)] p-5 text-[var(--breeze-text)] select-none space-y-5">
-      {/* KDE Plasma 6 Breeze Theme, Accent & KWin Effects */}
+      {/* Custom Plasma / LXQt Global Themes */}
       <section className="rounded-xl border border-[var(--breeze-border)] bg-[var(--breeze-view)] p-4 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--breeze-text-muted)]">
             <Sparkles className="h-4 w-4 plasma-accent-text" aria-hidden="true" />
-            KDE Plasma 6 Breeze Appearance &amp; KWin
+            Plasma / LXQt Global Themes (Persisted in IndexedDB)
           </div>
           <button
             type="button"
             onClick={() => setEditMode(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-2.5 py-1 text-[11px] font-medium hover:border-[var(--plasma-accent)] transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-2.5 py-1 text-[11px] font-medium hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer"
           >
             <Edit3 className="h-3 w-3 plasma-accent-text" aria-hidden="true" />
             Enter Desktop Edit Mode
           </button>
         </div>
 
-        {/* Three-State Color Scheme Control (Breeze Dark / Breeze Light / System) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 3 Global Theme Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {(['debian-crimson', 'strata-obsidian', 'lxqt-frost'] as GlobalThemeId[]).map((id) => {
+            const preset = GLOBAL_THEMES[id]
+            const active = settings.globalTheme === id
+            return (
+              <button
+                key={id}
+                id={`global-theme-${id}`}
+                type="button"
+                onClick={() => applyGlobalTheme(id)}
+                className={`flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition duration-120 cursor-pointer ${
+                  active
+                    ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
+                    : 'border-[var(--breeze-border)] bg-[var(--breeze-base)] hover:border-[var(--breeze-border-strong)]'
+                }`}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="h-4 w-4 rounded-md border border-white/20"
+                      style={{ backgroundColor: preset.baseHex }}
+                    />
+                    <span
+                      className="h-4 w-4 rounded-md border border-white/20"
+                      style={{ backgroundColor: preset.accentHex }}
+                    />
+                  </div>
+                  {active && <Check className="h-4 w-4 plasma-accent-text" />}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold">{preset.name}</div>
+                  <div className="mt-0.5 text-[10px] text-[var(--breeze-text-muted)]">
+                    {preset.tagline}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Three-State Color Scheme Override & Accent Picker */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
           <div className="space-y-2">
-            <div className="text-xs font-semibold">Global Breeze Color Scheme</div>
+            <div className="text-xs font-semibold">Color Scheme Override</div>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
-                  { id: 'dark', label: 'Breeze Dark', sub: '#1b1e20', icon: Moon },
-                  { id: 'light', label: 'Breeze Light', sub: '#eff0f1', icon: Sun },
+                  { id: 'dark', label: 'Dark', sub: 'Force Dark', icon: Moon },
+                  { id: 'light', label: 'Light', sub: 'Force Light', icon: Sun },
                   { id: 'system', label: 'System', sub: sysSchemeLabel, icon: Monitor },
                 ] as Array<{ id: ThemeMode; label: string; sub: string; icon: typeof Moon }>
               ).map((opt) => {
@@ -126,7 +172,7 @@ export const StrataSettings: React.FC = () => {
                     id={`theme-option-${opt.id}`}
                     type="button"
                     onClick={() => updateSettings({ theme: opt.id })}
-                    className={`flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition cursor-pointer ${
+                    className={`flex flex-col items-start gap-1 rounded-lg border p-2 text-left transition duration-120 cursor-pointer ${
                       active
                         ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                         : 'border-[var(--breeze-border)] bg-[var(--breeze-base)] hover:border-[var(--breeze-border-strong)]'
@@ -134,10 +180,10 @@ export const StrataSettings: React.FC = () => {
                   >
                     <div className="flex w-full items-center justify-between">
                       <Icon className="h-3.5 w-3.5 plasma-accent-text" aria-hidden="true" />
-                      {active && <Check className="h-3.5 w-3.5 plasma-accent-text" />}
+                      {active && <Check className="h-3 w-3 plasma-accent-text" />}
                     </div>
                     <div className="text-xs font-semibold">{opt.label}</div>
-                    <div className="truncate font-mono text-[10px] text-[var(--breeze-text-muted)]">
+                    <div className="truncate font-mono text-[9px] text-[var(--breeze-text-muted)]">
                       {opt.sub}
                     </div>
                   </button>
@@ -146,15 +192,14 @@ export const StrataSettings: React.FC = () => {
             </div>
           </div>
 
-          {/* Custom Accent Color Picker + Auto-Contrast Preview */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold">Plasma Accent Color</span>
+              <span className="text-xs font-semibold">Accent Color</span>
               <span className="rounded-md plasma-accent-fill px-2 py-0.5 font-mono text-[10px] font-semibold">
                 {settings.accentHex.toUpperCase()} • Auto Contrast
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               {ACCENT_PRESETS.map((acc) => {
                 const active = settings.accentHex.toLowerCase() === acc.hex.toLowerCase()
                 return (
@@ -162,7 +207,7 @@ export const StrataSettings: React.FC = () => {
                     key={acc.id}
                     type="button"
                     onClick={() => updateSettings({ accentColor: acc.id, accentHex: acc.hex })}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] transition duration-120 cursor-pointer ${
                       active
                         ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)] font-semibold'
                         : 'border-[var(--breeze-border)] bg-[var(--breeze-base)] text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)]'
@@ -185,7 +230,7 @@ export const StrataSettings: React.FC = () => {
                   type="color"
                   value={settings.accentHex}
                   onChange={(e) => updateSettings({ accentHex: e.target.value })}
-                  aria-label="Pick custom Plasma accent color"
+                  aria-label="Pick custom accent color"
                   className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
                 />
               </label>
@@ -193,13 +238,64 @@ export const StrataSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Wobbly Windows + Panel Edge Toggles */}
+        {/* Shell & KWin Toggles: LXQt Feather Mode, Panel Style, Panel Edge, Wobbly Windows */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-xs">
+          <button
+            id="toggle-feather-mode"
+            type="button"
+            onClick={() => {
+              const next = !settings.featherMode
+              updateSettings({ featherMode: next, performanceMode: next })
+            }}
+            className={`flex items-center justify-between rounded-lg border p-3 text-left transition duration-120 cursor-pointer ${
+              settings.featherMode
+                ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
+                : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Feather className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
+              <div>
+                <div className="font-semibold">LXQt Feather Mode</div>
+                <div className="text-[11px] text-[var(--breeze-text-muted)]">
+                  Kills all backdrop-filter blur &amp; shadows for 60fps
+                </div>
+              </div>
+            </div>
+            <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px]">
+              {settings.featherMode ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
+          <button
+            id="toggle-panel-style"
+            type="button"
+            onClick={() =>
+              updateSettings({
+                panelStyle: settings.panelStyle === 'floating' ? 'lxqt-compact' : 'floating',
+              })
+            }
+            className="flex items-center justify-between rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] p-3 text-left hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <PanelBottom className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
+              <div>
+                <div className="font-semibold">Panel Layout Style</div>
+                <div className="text-[11px] text-[var(--breeze-text-muted)]">
+                  Plasma Floating (44px) or LXQt Classic (32px)
+                </div>
+              </div>
+            </div>
+            <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase">
+              {settings.panelStyle === 'lxqt-compact' ? 'LXQt 32px' : 'Floating'}
+            </span>
+          </button>
+
           <button
             id="toggle-wobbly-windows"
             type="button"
             onClick={() => updateSettings({ wobblyWindows: !settings.wobblyWindows })}
-            className={`flex items-center justify-between rounded-lg border p-3 text-left transition cursor-pointer ${
+            className={`flex items-center justify-between rounded-lg border p-3 text-left transition duration-120 cursor-pointer ${
               settings.wobblyWindows
                 ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                 : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
@@ -226,14 +322,14 @@ export const StrataSettings: React.FC = () => {
                 panelPosition: settings.panelPosition === 'bottom' ? 'top' : 'bottom',
               })
             }
-            className="flex items-center justify-between rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] p-3 text-left hover:border-[var(--plasma-accent)] transition cursor-pointer"
+            className="flex items-center justify-between rounded-lg border border-[var(--breeze-border)] bg-[var(--breeze-base)] p-3 text-left hover:border-[var(--plasma-accent)] transition duration-120 cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <ArrowUpDown className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
               <div>
-                <div className="font-semibold">Floating Plasma Panel Edge</div>
+                <div className="font-semibold">Panel Screen Edge</div>
                 <div className="text-[11px] text-[var(--breeze-text-muted)]">
-                  De-floats flush automatically when a window maximizes
+                  Move Plasma / LXQt panel between Bottom and Top
                 </div>
               </div>
             </div>
@@ -253,11 +349,11 @@ export const StrataSettings: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-semibold">
-                Compositor Performance Mode (120fps Low-VRAM)
+                Compositor Performance Mode (Low-VRAM)
               </h3>
               <p className="mt-0.5 text-xs text-[var(--breeze-text-muted)]">
-                Disables <code className="font-mono plasma-accent-text">backdrop-filter: blur(20px)</code> on
-                Plasma Panel, KRunner &amp; overlays for instant GPU rasterization.
+                Disables <code className="font-mono plasma-accent-text">backdrop-filter</code> on
+                system chrome while keeping subtle KWin elevation shadows.
               </p>
             </div>
           </div>
@@ -268,14 +364,14 @@ export const StrataSettings: React.FC = () => {
             onClick={() =>
               updateSettings({ performanceMode: !settings.performanceMode })
             }
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition ${
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition duration-120 ${
               settings.performanceMode
                 ? 'plasma-accent-fill border-transparent'
                 : 'border-[var(--breeze-border-strong)] bg-[var(--breeze-base)]'
             }`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-120 ${
                 settings.performanceMode ? 'translate-x-5' : 'translate-x-1'
               }`}
             />
@@ -293,7 +389,7 @@ export const StrataSettings: React.FC = () => {
           <button
             type="button"
             onClick={() => setWebgpuWallpaper(!webgpuWallpaperEnabled)}
-            className={`p-3 rounded-lg border text-left flex items-center justify-between transition cursor-pointer ${
+            className={`p-3 rounded-lg border text-left flex items-center justify-between transition duration-120 cursor-pointer ${
               webgpuWallpaperEnabled
                 ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                 : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
@@ -313,7 +409,7 @@ export const StrataSettings: React.FC = () => {
           <button
             type="button"
             onClick={() => setWakeLockActive(!wakeLockActive)}
-            className={`p-3 rounded-lg border text-left flex items-center justify-between transition cursor-pointer ${
+            className={`p-3 rounded-lg border text-left flex items-center justify-between transition duration-120 cursor-pointer ${
               wakeLockActive
                 ? 'border-emerald-500/50 bg-emerald-500/10'
                 : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
@@ -336,7 +432,7 @@ export const StrataSettings: React.FC = () => {
           <button
             type="button"
             onClick={() => setStrataPetActive(!strataPetActive)}
-            className={`p-3 rounded-lg border text-left flex items-center justify-between transition cursor-pointer ${
+            className={`p-3 rounded-lg border text-left flex items-center justify-between transition duration-120 cursor-pointer ${
               strataPetActive
                 ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                 : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
@@ -347,7 +443,7 @@ export const StrataSettings: React.FC = () => {
               <div>
                 <div className="font-semibold">StrataPet Penguin Companion</div>
                 <div className="text-[11px] text-[var(--breeze-text-muted)]">
-                  Draggable Linux kernel mascot
+                  Draggable Debian Linux mascot
                 </div>
               </div>
             </div>
@@ -360,7 +456,7 @@ export const StrataSettings: React.FC = () => {
             <button
               type="button"
               onClick={() => setMelt93Active(true)}
-              className="flex-1 p-3 rounded-lg border border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/20 text-left flex items-center gap-2 transition cursor-pointer"
+              className="flex-1 p-3 rounded-lg border border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/20 text-left flex items-center gap-2 transition duration-120 cursor-pointer"
             >
               <Flame className="h-4 w-4 text-amber-400 shrink-0" aria-hidden="true" />
               <div>
@@ -374,7 +470,7 @@ export const StrataSettings: React.FC = () => {
             <button
               type="button"
               onClick={() => setBootPhase('uefi-setup')}
-              className="flex-1 p-3 rounded-lg border border-[var(--plasma-accent)]/40 bg-[var(--breeze-base)] hover:bg-[var(--breeze-hover)] text-left flex items-center gap-2 transition cursor-pointer"
+              className="flex-1 p-3 rounded-lg border border-[var(--plasma-accent)]/40 bg-[var(--breeze-base)] hover:bg-[var(--breeze-hover)] text-left flex items-center gap-2 transition duration-120 cursor-pointer"
             >
               <Shield className="h-4 w-4 plasma-accent-text shrink-0" aria-hidden="true" />
               <div>
@@ -400,7 +496,7 @@ export const StrataSettings: React.FC = () => {
                   key={wp.id}
                   type="button"
                   onClick={() => updateSettings({ wallpaper: wp.id })}
-                  className={`flex items-center gap-2.5 rounded-lg border p-2 text-left transition cursor-pointer ${
+                  className={`flex items-center gap-2.5 rounded-lg border p-2 text-left transition duration-120 cursor-pointer ${
                     active
                       ? 'border-[var(--plasma-accent)] bg-[var(--breeze-hover)]'
                       : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]'
@@ -462,7 +558,7 @@ export const StrataSettings: React.FC = () => {
       <section className="rounded-xl border border-[var(--breeze-border)] bg-[var(--breeze-view)] p-4">
         <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--breeze-text-muted)]">
           <Keyboard className="h-4 w-4 plasma-accent-text" aria-hidden="true" />
-          Plasma &amp; KWin Keyboard Shortcuts
+          Plasma &amp; LXQt Keyboard Shortcuts
         </div>
         <div className="divide-y divide-[var(--breeze-border)] text-xs">
           {SHORTCUTS.map((sc) => (

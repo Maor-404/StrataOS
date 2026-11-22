@@ -97,6 +97,15 @@ class KernelClient {
     return await this.ensureRemote().getMetrics()
   }
 
+  async setRuntimeMeta(meta: {
+    activeTheme?: string
+    panelMode?: string
+    featherMode?: string
+    siteUrl?: string
+  }): Promise<void> {
+    await this.ensureRemote().setRuntimeMeta(meta)
+  }
+
   async getDmesgLogs(): Promise<DmesgEntry[]> {
     return await this.ensureRemote().getDmesgLogs()
   }

@@ -1,4 +1,4 @@
-name: CI Build & Cross-Origin Header Guard
+name: CI Build, Header Guard & Cloudflare 25 MiB Check
 
 on:
   push:
@@ -22,10 +22,13 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: TypeScript Strict Check
+        run: npx tsc -b
+
       - name: Build Production Bundle
         run: npm run build
 
-      - name: Verify Cloudflare Pages Artifacts & Cross-Origin Isolation Headers
+      - name: Verify Cloudflare Pages Artifacts, COOP/COEP Headers & 25 MiB File Limit
         run: |
           set -euo pipefail
           test -f dist/index.html
@@ -34,6 +37,19 @@ jobs:
           grep -Fq "Cross-Origin-Opener-Policy: same-origin" dist/_headers
           grep -Fq "Cross-Origin-Embedder-Policy: require-corp" dist/_headers
           grep -Fq "X-Content-Type-Options: nosniff" dist/_headers
-          grep -Fq "Cross-Origin-Resource-Policy: same-origin" dist/_headers
           grep -Fq "/* /index.html 200" dist/_redirects
-          echo "Verified dist/index.html, dist/_headers (COOP/COEP/CORP), and dist/_redirects."
+
+          MAX_BYTES=$((25 * 1024 * 1024))
+          OVERSIZED=0
+          while IFS= read -r -d '' file; do
+            size=$(stat -c%s "$file")
+            if [ "$size" -gt "$MAX_BYTES" ]; then
+              echo "::error::Cloudflare Pages limit exceeded (>25 MiB): $file ($size bytes)"
+              OVERSIZED=1
+            fi
+          done < <(find dist -type f -print0)
+
+          if [ "$OVERSIZED" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Verified dist/index.html, dist/_headers (COOP/COEP), dist/_redirects, and all dist/ files <= 25 MiB."
