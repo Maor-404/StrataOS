@@ -1,14 +1,44 @@
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react'
 import React, { memo, useCallback, useRef } from 'react'
+import { ByteScope } from '../apps/Extras/ByteScope'
+import { StrataPaint93 } from '../apps/Extras/StrataPaint93'
+import { TermArcade } from '../apps/Extras/TermArcade'
 import { StrataCode } from '../apps/StrataCode/StrataCode'
+import { StrataCopilot } from '../apps/StrataCopilot/StrataCopilot'
 import { StrataFiles } from '../apps/StrataFiles/StrataFiles'
+import { StrataGpuStudio } from '../apps/StrataGpuStudio/StrataGpuStudio'
 import { StrataMonitor } from '../apps/StrataMonitor/StrataMonitor'
 import { StrataSettings } from '../apps/StrataSettings/StrataSettings'
 import { StrataStore } from '../apps/StrataStore/StrataStore'
+import { StrataStudio } from '../apps/StrataStudio/StrataStudio'
 import { StrataTerminal } from '../apps/StrataTerminal/StrataTerminal'
 import { WasmAppHost } from '../apps/WasmAppHost/WasmAppHost'
 import { useOsStore, type SnapZone, type WindowInstance } from '../state/osStore'
 import { AppIcon } from './AppIcon'
+
+/**
+ * 2026 Modern Web Platform Primitive: Element.prototype.moveBefore
+ * Relocates a live DOM subtree (such as an active xterm WebGL canvas or AudioWorklet scope)
+ * across containers without resetting iframe/canvas/focus state, with graceful fallback.
+ */
+export function moveElementPreservingState(
+  parent: HTMLElement,
+  node: HTMLElement,
+  referenceNode: Node | null = null
+): void {
+  const modernParent = parent as HTMLElement & {
+    moveBefore?: (movedNode: Node, refNode: Node | null) => void
+  }
+  if (typeof modernParent.moveBefore === 'function' && node.parentElement) {
+    try {
+      modernParent.moveBefore(node, referenceNode)
+      return
+    } catch {
+      // Fallback if moveBefore is rejected across shadow roots
+    }
+  }
+  parent.insertBefore(node, referenceNode)
+}
 
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -25,8 +55,14 @@ const RESIZE_HANDLES: Array<{ dir: ResizeDir; className: string }> = [
 
 const WindowContent: React.FC<{ win: WindowInstance }> = memo(({ win }) => {
   if (win.appId === 'terminal') return <StrataTerminal />
+  if (win.appId === 'studio') return <StrataStudio />
   if (win.appId === 'store') return <StrataStore />
   if (win.appId === 'files') return <StrataFiles initialPath={win.initialPayload?.filePath} />
+  if (win.appId === 'copilot') return <StrataCopilot />
+  if (win.appId === 'gpu-studio') return <StrataGpuStudio />
+  if (win.appId === 'bytescope') return <ByteScope />
+  if (win.appId === 'paint93') return <StrataPaint93 />
+  if (win.appId === 'termarcade') return <TermArcade />
   if (win.appId === 'code') return <StrataCode initialFilePath={win.initialPayload?.filePath} />
   if (win.appId === 'monitor') return <StrataMonitor />
   if (win.appId === 'settings') return <StrataSettings />
@@ -47,7 +83,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
   const win = useOsStore((s) => s.windows[windowId])
   const activeWorkspace = useOsStore((s) => s.activeWorkspace)
   const isFocused = useOsStore((s) => s.focusedWindowId === windowId)
-  const performanceMode = useOsStore((s) => s.settings.performanceMode)
 
   const focusWindow = useOsStore((s) => s.focusWindow)
   const closeWindow = useOsStore((s) => s.closeWindow)
@@ -78,7 +113,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       let currentWidth = win.width
       let currentHeight = win.height
 
-      // If maximized or snapped, unmaximize into cursor-centered bounds on drag
       if (win.isMaximized || win.snapState) {
         currentWidth = win.prevBounds?.width ?? 820
         currentHeight = win.prevBounds?.height ?? 520
@@ -94,7 +128,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       let latestY = startY
       let detectedSnap: SnapZone = null
 
-      // Enable GPU compositing hint ONLY during active drag
       el.style.willChange = 'transform'
 
       const onPointerMove = (moveEv: PointerEvent) => {
@@ -103,7 +136,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
         latestX = startX + dx
         latestY = Math.max(32, Math.min(vh - 76, startY + dy))
 
-        // Edge-snapping detection
         let nextSnap: SnapZone = null
         if (moveEv.clientX <= 16) {
           nextSnap = 'left'
@@ -132,7 +164,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
           rafRef.current = null
         }
 
-        // Remove will-change immediately after drag completes to conserve VRAM
         el.style.willChange = 'auto'
         setActiveSnapPreview(null)
 
@@ -178,7 +209,6 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
       let latestW = startW
       let latestH = startH
 
-      // Apply GPU compositing hint ONLY during active resize
       el.style.willChange = 'transform, width, height'
 
       const onPointerMove = (moveEv: PointerEvent) => {
@@ -262,13 +292,13 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
         zIndex: win.zIndex,
         display: isVisible ? 'flex' : 'none',
       }}
-      className={`fixed top-0 left-0 flex-col overflow-hidden ${
+      className={`fixed top-0 left-0 flex-col overflow-hidden strata-window-surface ${
         win.isMaximized ? 'rounded-none' : 'rounded-xl'
       } border transition-shadow duration-150 ${
         isFocused
-          ? 'border-cyan-500/40 shadow-[0_24px_60px_rgba(0,0,0,0.75)]'
-          : 'border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.5)]'
-      } ${performanceMode ? 'bg-zinc-950' : 'bg-zinc-950/90 backdrop-blur-xl'}`}
+          ? 'border-sky-500/40 shadow-[0_24px_60px_rgba(0,0,0,0.82)]'
+          : 'border-white/[0.08] shadow-[0_12px_32px_rgba(0,0,0,0.55)]'
+      }`}
     >
       {/* 8-Directional Resize Handles */}
       {!win.isMaximized &&
@@ -280,21 +310,21 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
           />
         ))}
 
-      {/* Window Title Bar */}
+      {/* Uniform 36px (h-9) Window Title Bar */}
       <div
         onPointerDown={handleDragStart}
         onDoubleClick={() => toggleMaximizeWindow(windowId)}
         className={`flex h-9 shrink-0 items-center justify-between border-b px-3 select-none cursor-default ${
           isFocused
-            ? 'border-white/10 bg-zinc-900/90 text-zinc-100'
-            : 'border-white/5 bg-zinc-900/50 text-zinc-400'
+            ? 'border-white/[0.08] bg-[#18181c] text-zinc-100'
+            : 'border-white/[0.05] bg-[#121215] text-zinc-400'
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <AppIcon name={win.icon} className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+          <AppIcon name={win.icon} appId={win.appId} className="h-3.5 w-3.5 shrink-0 text-sky-400" />
           <span className="truncate text-xs font-medium tracking-tight">{win.title}</span>
           {win.wasmPkgId && (
-            <span className="rounded bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.2 font-mono text-[9px] text-cyan-300">
+            <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 font-mono text-[9px] text-sky-300">
               WASM
             </span>
           )}
@@ -330,8 +360,8 @@ const WindowFrame: React.FC<{ windowId: string }> = memo(({ windowId }) => {
         </div>
       </div>
 
-      {/* Window Client Body */}
-      <div className="relative flex-1 overflow-hidden">
+      {/* Window Client Body with CSS Container Query context */}
+      <div className="relative flex-1 overflow-hidden strata-window-container">
         <WindowContent win={win} />
       </div>
     </div>
@@ -348,7 +378,7 @@ export const WindowManager: React.FC = () => {
       {/* Edge-Snapping Visual Preview Overlay */}
       {activeSnapPreview && (
         <div
-          className={`pointer-events-none fixed z-[8500] rounded-xl border-2 border-cyan-400/60 bg-cyan-500/15 transition-all duration-100 ${
+          className={`pointer-events-none fixed z-[8500] rounded-xl border-2 border-sky-400/60 bg-sky-500/15 transition-all duration-100 ${
             activeSnapPreview === 'left'
               ? 'top-9 bottom-20 left-2 w-[calc(50%-12px)]'
               : activeSnapPreview === 'right'

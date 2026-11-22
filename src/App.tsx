@@ -4,18 +4,25 @@ import { AboutModal } from './shell/AboutModal'
 import { AppIcon } from './shell/AppIcon'
 import { CommandPalette } from './shell/CommandPalette'
 import { FloatingDock } from './shell/FloatingDock'
+import { Melt93Overlay } from './shell/Melt93Overlay'
+import { MissionControl } from './shell/MissionControl'
+import { StrataPet } from './shell/StrataPet'
+import { StrataUEFI } from './shell/StrataUEFI'
+import { TimeMachineDrawer } from './shell/TimeMachineDrawer'
 import { TopStatusBar } from './shell/TopStatusBar'
+import { WebGpuComputeWallpaper } from './shell/WebGpuComputeWallpaper'
 import { WindowManager } from './shell/WindowManager'
 import { NATIVE_APPS, useOsStore, type WallpaperId } from './state/osStore'
 
 const WALLPAPER_STYLES: Record<WallpaperId, string> = {
   'obsidian-grid':
-    'radial-gradient(ellipse at 18% 12%, rgba(24, 34, 46, 0.55) 0%, rgba(9, 9, 11, 1) 65%)',
+    'radial-gradient(ellipse at 18% 12%, rgba(24, 34, 46, 0.45) 0%, rgba(9, 9, 11, 1) 65%)',
   'carbon-slate':
-    'radial-gradient(circle at 20% 20%, #161b22 0%, #090b0e 78%)',
+    'radial-gradient(circle at 20% 20%, #14181f 0%, #09090b 78%)',
   'midnight-aurora':
-    'radial-gradient(circle at 80% 15%, #0d2229 0%, #090c10 68%, #060709 100%)',
-  'deep-abyss': 'linear-gradient(180deg, #050507 0%, #000000 100%)',
+    'radial-gradient(circle at 80% 15%, #0c1d24 0%, #09090b 70%)',
+  'deep-abyss': 'linear-gradient(180deg, #09090b 0%, #050507 100%)',
+  'webgpu-compute': 'radial-gradient(circle at 50% 50%, #0d1520 0%, #09090b 80%)',
 }
 
 export const App: React.FC = () => {
@@ -28,7 +35,8 @@ export const App: React.FC = () => {
   const openApp = useOsStore((s) => s.openApp)
   const closeAppByPkgId = useOsStore((s) => s.closeAppByPkgId)
   const toggleCommandPalette = useOsStore((s) => s.toggleCommandPalette)
-  const setActiveWorkspace = useOsStore((s) => s.setActiveWorkspace)
+  const toggleMissionControl = useOsStore((s) => s.toggleMissionControl)
+  const setWorkspace = useOsStore((s) => s.setActiveWorkspace)
   const hydratePreferences = useOsStore((s) => s.hydratePreferences)
 
   // Boot Linux kernel worker & hydrate preferences
@@ -104,7 +112,7 @@ export const App: React.FC = () => {
     setWorkerLatency,
   ])
 
-  // Global Keyboard Shortcuts (Ctrl+K, Alt+Space, Alt+1/2/3)
+  // Global Keyboard Shortcuts (Ctrl+K, Alt+Space, Alt+Tab, Alt+1/2/3)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -113,14 +121,17 @@ export const App: React.FC = () => {
       } else if (e.altKey && e.code === 'Space') {
         e.preventDefault()
         toggleCommandPalette()
+      } else if (e.altKey && e.key === 'Tab') {
+        e.preventDefault()
+        toggleMissionControl()
       } else if (e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
         e.preventDefault()
-        setActiveWorkspace(Number(e.key) as 1 | 2 | 3)
+        setWorkspace(Number(e.key) as 1 | 2 | 3)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [toggleCommandPalette, setActiveWorkspace])
+  }, [toggleCommandPalette, toggleMissionControl, setWorkspace])
 
   const desktopShortcuts = useMemo(() => {
     const base = Object.values(NATIVE_APPS).map((app) => ({
@@ -156,13 +167,19 @@ export const App: React.FC = () => {
 
   return (
     <main
-      className="relative h-screen w-screen overflow-hidden select-none"
+      className="relative h-screen w-screen overflow-hidden select-none bg-[#09090b]"
       style={{ background: WALLPAPER_STYLES[wallpaper] ?? WALLPAPER_STYLES['obsidian-grid'] }}
     >
       {/* Hidden h1 for accessibility & SEO */}
       <h1 className="sr-only">
-        StrataOS — Browser-Native Linux 7.3 Web Operating System & strataget WASM Ecosystem
+        StrataOS v1.0.0 (Bedrock) — Browser-Native Linux 7.3 Web Operating System &amp; strataget WASM Ecosystem
       </h1>
+
+      {/* StrataUEFI Pre-Boot Firmware & POST Splash */}
+      <StrataUEFI />
+
+      {/* Optional WebGPU 120fps WGSL Compute Wallpaper */}
+      <WebGpuComputeWallpaper />
 
       {/* Top Status Bar */}
       <TopStatusBar />
@@ -170,16 +187,16 @@ export const App: React.FC = () => {
       {/* Desktop Shortcut Icons Grid */}
       <section
         aria-label="Desktop Shortcuts"
-        className="fixed top-12 left-4 z-10 flex flex-col flex-wrap gap-2 max-h-[calc(100vh-130px)]"
+        className="fixed top-11 left-3 z-10 flex flex-col flex-wrap gap-1.5 max-h-[calc(100vh-115px)]"
       >
         {desktopShortcuts.map((sc) => (
           <button
             key={sc.id}
             onClick={sc.onOpen}
-            className="group flex w-20 flex-col items-center gap-1.5 rounded-xl border border-transparent p-2 text-center hover:border-white/10 hover:bg-white/5 transition"
+            className="group flex w-20 flex-col items-center gap-1 rounded-xl border border-transparent p-1.5 text-center hover:border-white/10 hover:bg-white/[0.04] transition"
           >
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-zinc-900/80 text-cyan-300 shadow-md group-hover:border-cyan-500/40 group-hover:text-cyan-200">
-              <AppIcon name={sc.icon} className="h-5 w-5" />
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-[#121215]/90 text-sky-400 shadow-md group-hover:border-sky-500/40 group-hover:text-sky-300">
+              <AppIcon name={sc.icon} appId={sc.id} className="h-4 w-4" />
               {sc.badge && (
                 <span className="absolute -top-1 -right-1 rounded bg-emerald-500 px-1 py-0.2 font-mono text-[8px] font-bold text-zinc-950">
                   {sc.badge}
@@ -199,11 +216,21 @@ export const App: React.FC = () => {
       {/* Floating Bottom Dock */}
       <FloatingDock />
 
+      {/* Mission Control & Workspaces Overview (Alt+Tab) */}
+      <MissionControl />
+
+      {/* Time Machine Snapshots & System Control Drawer */}
+      <TimeMachineDrawer />
+
       {/* Command Palette Overlay */}
       <CommandPalette />
 
       {/* About StrataOS Modal */}
       <AboutModal />
+
+      {/* Windows 93-Inspired Extras Overlays */}
+      <Melt93Overlay />
+      <StrataPet />
     </main>
   )
 }

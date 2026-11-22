@@ -324,6 +324,15 @@ cat << 'EOF' > /usr/local/bin/strataget
 exec /run/kw/bin/__strataget_rpc "$@"
 EOF
 chmod +x /usr/local/bin/strataget
+
+cat << 'EOF' > /etc/os-release
+NAME="StrataOS"
+VERSION="1.0.0 (Bedrock)"
+ID=strataos
+VERSION_ID="1.0.0"
+PRETTY_NAME="StrataOS v1.0.0 (Bedrock) — Linux 7.3.4 / unkernel WASM"
+HOME_URL="https://github.com/Maor-404/StrataOS"
+EOF
 `
     await this.vm.exec('/bin/sh', ['-c', bootScript])
 
@@ -498,7 +507,7 @@ chmod +x /usr/local/bin/strataget
       sessionState.pty = pty
 
       const banner = this.encoder.encode(
-        `\x1b[1;36mStrataOS 1.0\x1b[0m \x1b[90m(Linux 7.3.4-unkernel wasm32 / aarch64-kwemu, tty /dev/pts/${pty.pts})\x1b[0m\r\n` +
+        `\x1b[1;36mStrataOS v1.0.0 ("Bedrock")\x1b[0m \x1b[90m(Linux 7.3.4-unkernel wasm32 / aarch64-kwemu, tty /dev/pts/${pty.pts})\x1b[0m\r\n` +
           `\x1b[90mType \x1b[36mstrataget --help\x1b[90m to manage community WebAssembly packages.\x1b[0m\r\n\r\n`
       )
       enqueueChunk(banner)

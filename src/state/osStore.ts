@@ -2,14 +2,52 @@ import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import type { InstalledPackageRecord, KernelStatus } from '../kernel/types'
+import { STRATA_CONFIG } from '../strata.config'
 
-export type NativeAppId = 'terminal' | 'store' | 'files' | 'code' | 'monitor' | 'settings'
+export type NativeAppId =
+  | 'terminal'
+  | 'studio'
+  | 'store'
+  | 'files'
+  | 'copilot'
+  | 'gpu-studio'
+  | 'bytescope'
+  | 'paint93'
+  | 'termarcade'
+  | 'code'
+  | 'monitor'
+  | 'settings'
+
 export type AppId = NativeAppId | `wasm:${string}`
 
 export type SnapZone = 'left' | 'right' | 'maximize' | null
 
-export type WallpaperId = 'obsidian-grid' | 'carbon-slate' | 'midnight-aurora' | 'deep-abyss'
+export type WallpaperId =
+  | 'obsidian-grid'
+  | 'carbon-slate'
+  | 'midnight-aurora'
+  | 'deep-abyss'
+  | 'webgpu-compute'
+
 export type AccentColorId = 'cyan' | 'emerald' | 'amber' | 'sky' | 'rose'
+
+export type BootPhase =
+  | 'post'
+  | 'uefi-setup'
+  | 'uefi-boot-menu'
+  | 'uefi-shell'
+  | 'tty-recovery'
+  | 'desktop'
+
+export type BootTarget = 'desktop' | 'tty-recovery' | 'uefi-shell' | 'safe-mode'
+
+export interface UefiNvramSettings {
+  bootPriority: BootTarget
+  secureBoot: boolean
+  fastBoot: boolean
+  postTimeoutMs: number
+  virtualizationJit: boolean
+}
 
 export interface WindowInstance {
   id: string
@@ -38,9 +76,10 @@ export interface WindowInstance {
 export interface OsSettings {
   wallpaper: WallpaperId
   accentColor: AccentColorId
-  performanceMode: boolean // Disables backdrop-filter: blur() across all windows
+  performanceMode: boolean
   terminalFontSize: number
   showKernelTimestamps: boolean
+  webgpuWallpaperEnabled: boolean
 }
 
 export interface NativeAppMeta {
@@ -48,6 +87,7 @@ export interface NativeAppMeta {
   name: string
   subtitle: string
   icon: string
+  category: 'Core' | 'Developer' | 'AI & GPU' | 'Extras'
   defaultWidth: number
   defaultHeight: number
   minWidth: number
@@ -60,16 +100,29 @@ export const NATIVE_APPS: Record<NativeAppId, NativeAppMeta> = {
     name: 'Strata Terminal',
     subtitle: 'WebGL Linux 7.3 PTY Shell',
     icon: 'Terminal',
+    category: 'Core',
     defaultWidth: 820,
     defaultHeight: 520,
     minWidth: 460,
     minHeight: 300,
+  },
+  studio: {
+    id: 'studio',
+    name: 'Strata Studio',
+    subtitle: 'Multi-Pane Browser IDE & WASM Scaffolder',
+    icon: 'Layout',
+    category: 'Developer',
+    defaultWidth: 980,
+    defaultHeight: 630,
+    minWidth: 640,
+    minHeight: 420,
   },
   store: {
     id: 'store',
     name: 'Strata Store',
     subtitle: 'Community WASM & WASI Package Center',
     icon: 'Package',
+    category: 'Core',
     defaultWidth: 940,
     defaultHeight: 620,
     minWidth: 640,
@@ -78,46 +131,106 @@ export const NATIVE_APPS: Record<NativeAppId, NativeAppMeta> = {
   files: {
     id: 'files',
     name: 'Strata Files',
-    subtitle: 'Virtualized Linux ext4 Explorer',
+    subtitle: 'Virtualized ext4 Explorer & Host Mounts',
     icon: 'FolderTree',
-    defaultWidth: 860,
+    category: 'Core',
+    defaultWidth: 880,
     defaultHeight: 560,
     minWidth: 560,
+    minHeight: 380,
+  },
+  copilot: {
+    id: 'copilot',
+    name: 'Strata Copilot',
+    subtitle: 'Chrome Built-in AI & Kernel Assistant',
+    icon: 'Bot',
+    category: 'AI & GPU',
+    defaultWidth: 780,
+    defaultHeight: 580,
+    minWidth: 480,
+    minHeight: 380,
+  },
+  'gpu-studio': {
+    id: 'gpu-studio',
+    name: 'Strata GPU Studio',
+    subtitle: 'WebGPU WGSL Compute Playground & Benchmark',
+    icon: 'Gpu',
+    category: 'AI & GPU',
+    defaultWidth: 920,
+    defaultHeight: 600,
+    minWidth: 600,
+    minHeight: 420,
+  },
+  bytescope: {
+    id: 'bytescope',
+    name: 'ByteScope',
+    subtitle: 'AudioWorklet Bytebeat Synth & X-Y Oscilloscope',
+    icon: 'Waveform',
+    category: 'Extras',
+    defaultWidth: 800,
+    defaultHeight: 540,
+    minWidth: 520,
+    minHeight: 380,
+  },
+  paint93: {
+    id: 'paint93',
+    name: 'StrataPaint 93',
+    subtitle: 'Pixel Studio with Direct /root PNG Export',
+    icon: 'Palette',
+    category: 'Extras',
+    defaultWidth: 760,
+    defaultHeight: 540,
+    minWidth: 500,
+    minHeight: 380,
+  },
+  termarcade: {
+    id: 'termarcade',
+    name: 'TermArcade',
+    subtitle: 'Retro Matrix & Logic Grid Arcade',
+    icon: 'Gamepad',
+    category: 'Extras',
+    defaultWidth: 720,
+    defaultHeight: 520,
+    minWidth: 480,
     minHeight: 380,
   },
   code: {
     id: 'code',
     name: 'Strata Code',
-    subtitle: 'Lightweight CodeMirror 6 Workbench',
+    subtitle: 'Lightweight CodeMirror 6 Buffer Editor',
     icon: 'Code2',
-    defaultWidth: 880,
-    defaultHeight: 580,
-    minWidth: 540,
+    category: 'Developer',
+    defaultWidth: 860,
+    defaultHeight: 560,
+    minWidth: 520,
     minHeight: 360,
   },
   monitor: {
     id: 'monitor',
     name: 'Strata Monitor',
-    subtitle: 'Kernel Telemetry, dmesg & Disk Quota',
+    subtitle: 'Kernel Telemetry, dmesg & Time Machine',
     icon: 'Activity',
-    defaultWidth: 860,
-    defaultHeight: 560,
+    category: 'Core',
+    defaultWidth: 880,
+    defaultHeight: 580,
     minWidth: 560,
     minHeight: 380,
   },
   settings: {
     id: 'settings',
     name: 'Strata Settings',
-    subtitle: 'Compositor, Performance & Appearance',
+    subtitle: 'Compositor, UEFI NVRAM & Platform Primitives',
     icon: 'Sliders',
-    defaultWidth: 720,
-    defaultHeight: 520,
+    category: 'Core',
+    defaultWidth: 760,
+    defaultHeight: 540,
     minWidth: 500,
     minHeight: 380,
   },
 }
 
 const PREFS_STORAGE_KEY = 'strataos:preferences:v1'
+const NVRAM_STORAGE_KEY = 'strataos:uefi_nvram:v1'
 
 interface PersistedPreferences {
   settings: OsSettings
@@ -125,23 +238,29 @@ interface PersistedPreferences {
 }
 
 const DEFAULT_SETTINGS: OsSettings = {
-  wallpaper: 'obsidian-grid',
-  accentColor: 'cyan',
+  wallpaper: STRATA_CONFIG.defaultTheme.wallpaper,
+  accentColor: STRATA_CONFIG.defaultTheme.accentColor,
   performanceMode: false,
   terminalFontSize: 13,
   showKernelTimestamps: true,
+  webgpuWallpaperEnabled: false,
 }
 
-const DEFAULT_PINNED_APPS: AppId[] = [
-  'terminal',
-  'store',
-  'files',
-  'code',
-  'monitor',
-  'settings',
-]
+const DEFAULT_NVRAM: UefiNvramSettings = {
+  bootPriority: 'desktop',
+  secureBoot: true,
+  fastBoot: false,
+  postTimeoutMs: STRATA_CONFIG.uefiPostDelayMs,
+  virtualizationJit: true,
+}
+
+const DEFAULT_PINNED_APPS: AppId[] = STRATA_CONFIG.pinnedDockApps as AppId[]
 
 export interface OsState {
+  // Firmware & Boot state
+  bootPhase: BootPhase
+  nvram: UefiNvramSettings
+
   // Kernel status
   kernelStatus: KernelStatus
   kernelBootStage: string
@@ -155,9 +274,18 @@ export interface OsState {
   topZIndex: number
   activeSnapPreview: SnapZone
 
-  // Command palette & system menus
+  // Overlays, Drawers & Extras
   commandPaletteOpen: boolean
   aboutModalOpen: boolean
+  missionControlOpen: boolean
+  notificationDrawerOpen: boolean
+  melt93Active: boolean
+  strataPetActive: boolean
+  wakeLockActive: boolean
+
+  // Cross-app AI & IDE bridge
+  studioDraft: { filePath: string; content: string } | null
+  lastTerminalError: string
 
   // Installed strataget packages (synced from /etc/strata/installed.json)
   installedPackages: InstalledPackageRecord[]
@@ -167,12 +295,25 @@ export interface OsState {
   settings: OsSettings
 
   // Actions
+  setBootPhase: (phase: BootPhase) => void
+  updateNvram: (partial: Partial<UefiNvramSettings>) => void
+  resetNvram: () => void
+
   setKernelStatus: (status: KernelStatus, stage: string) => void
   setWorkerLatency: (ms: number) => void
   setActiveWorkspace: (ws: 1 | 2 | 3) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
   setAboutModalOpen: (open: boolean) => void
+  setMissionControlOpen: (open: boolean) => void
+  toggleMissionControl: () => void
+  setNotificationDrawerOpen: (open: boolean) => void
+  toggleNotificationDrawer: () => void
+  setMelt93Active: (active: boolean) => void
+  setStrataPetActive: (active: boolean) => void
+  setWakeLockActive: (active: boolean) => void
+  setStudioDraft: (draft: { filePath: string; content: string } | null) => void
+  setLastTerminalError: (err: string) => void
   setActiveSnapPreview: (zone: SnapZone) => void
 
   setInstalledPackages: (pkgs: InstalledPackageRecord[]) => void
@@ -197,9 +338,24 @@ export interface OsState {
 
 function savePreferencesToIdb(settings: OsSettings, pinnedApps: AppId[]) {
   const payload: PersistedPreferences = { settings, pinnedApps }
-  void idbSet(PREFS_STORAGE_KEY, payload).catch(() => {
-    // ignore IndexedDB errors
-  })
+  void idbSet(PREFS_STORAGE_KEY, payload).catch(() => {})
+}
+
+function saveNvramToIdb(nvram: UefiNvramSettings) {
+  void idbSet(NVRAM_STORAGE_KEY, nvram).catch(() => {})
+}
+
+function getInitialBootPhase(): BootPhase {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    const bootParam = params.get('boot')?.toLowerCase()
+    if (bootParam === 'uefi' || bootParam === 'setup') return 'uefi-setup'
+    if (bootParam === 'menu') return 'uefi-boot-menu'
+    if (bootParam === 'shell') return 'uefi-shell'
+    if (bootParam === 'tty') return 'tty-recovery'
+    if (bootParam === 'desktop' || bootParam === 'skip') return 'desktop'
+  }
+  return STRATA_CONFIG.enableUEFI ? 'post' : 'desktop'
 }
 
 const initialTerminalWindow: WindowInstance = {
@@ -208,8 +364,8 @@ const initialTerminalWindow: WindowInstance = {
   title: 'Strata Terminal — /dev/pts/0',
   icon: 'Terminal',
   workspace: 1,
-  x: 72,
-  y: 54,
+  x: 84,
+  y: 52,
   width: 820,
   height: 520,
   minWidth: 460,
@@ -222,6 +378,9 @@ const initialTerminalWindow: WindowInstance = {
 
 export const useOsStore = create<OsState>()(
   immer((set, get) => ({
+    bootPhase: getInitialBootPhase(),
+    nvram: DEFAULT_NVRAM,
+
     kernelStatus: 'booting',
     kernelBootStage: 'Initializing WebWorker...',
     workerLatencyMs: 0.4,
@@ -237,10 +396,35 @@ export const useOsStore = create<OsState>()(
 
     commandPaletteOpen: false,
     aboutModalOpen: false,
+    missionControlOpen: false,
+    notificationDrawerOpen: false,
+    melt93Active: false,
+    strataPetActive: false,
+    wakeLockActive: false,
+
+    studioDraft: null,
+    lastTerminalError: '',
 
     installedPackages: [],
     pinnedApps: DEFAULT_PINNED_APPS,
     settings: DEFAULT_SETTINGS,
+
+    setBootPhase: (phase) =>
+      set((state) => {
+        state.bootPhase = phase
+      }),
+
+    updateNvram: (partial) =>
+      set((state) => {
+        state.nvram = { ...state.nvram, ...partial }
+        saveNvramToIdb(state.nvram)
+      }),
+
+    resetNvram: () =>
+      set((state) => {
+        state.nvram = { ...DEFAULT_NVRAM }
+        saveNvramToIdb(state.nvram)
+      }),
 
     setKernelStatus: (status, stage) =>
       set((state) => {
@@ -253,21 +437,30 @@ export const useOsStore = create<OsState>()(
         state.workerLatencyMs = ms
       }),
 
-    setActiveWorkspace: (ws) =>
-      set((state) => {
-        state.activeWorkspace = ws
-        // Focus highest z-index unminimized window on that workspace
-        let bestId: string | null = null
-        let bestZ = -1
-        for (const id of state.windowOrder) {
-          const w = state.windows[id]
-          if (w && w.workspace === ws && !w.isMinimized && w.zIndex > bestZ) {
-            bestZ = w.zIndex
-            bestId = id
+    setActiveWorkspace: (ws) => {
+      const applyChange = () =>
+        set((state) => {
+          state.activeWorkspace = ws
+          let bestId: string | null = null
+          let bestZ = -1
+          for (const id of state.windowOrder) {
+            const w = state.windows[id]
+            if (w && w.workspace === ws && !w.isMinimized && w.zIndex > bestZ) {
+              bestZ = w.zIndex
+              bestId = id
+            }
           }
-        }
-        state.focusedWindowId = bestId
-      }),
+          state.focusedWindowId = bestId
+        })
+
+      if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+        ;(document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+          applyChange()
+        })
+      } else {
+        applyChange()
+      }
+    },
 
     setCommandPaletteOpen: (open) =>
       set((state) => {
@@ -284,6 +477,58 @@ export const useOsStore = create<OsState>()(
         state.aboutModalOpen = open
       }),
 
+    setMissionControlOpen: (open) => {
+      const apply = () =>
+        set((state) => {
+          state.missionControlOpen = open
+        })
+      if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+        ;(document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition(apply)
+      } else {
+        apply()
+      }
+    },
+
+    toggleMissionControl: () => {
+      const next = !get().missionControlOpen
+      get().setMissionControlOpen(next)
+    },
+
+    setNotificationDrawerOpen: (open) =>
+      set((state) => {
+        state.notificationDrawerOpen = open
+      }),
+
+    toggleNotificationDrawer: () =>
+      set((state) => {
+        state.notificationDrawerOpen = !state.notificationDrawerOpen
+      }),
+
+    setMelt93Active: (active) =>
+      set((state) => {
+        state.melt93Active = active
+      }),
+
+    setStrataPetActive: (active) =>
+      set((state) => {
+        state.strataPetActive = active
+      }),
+
+    setWakeLockActive: (active) =>
+      set((state) => {
+        state.wakeLockActive = active
+      }),
+
+    setStudioDraft: (draft) =>
+      set((state) => {
+        state.studioDraft = draft
+      }),
+
+    setLastTerminalError: (err) =>
+      set((state) => {
+        state.lastTerminalError = err
+      }),
+
     setActiveSnapPreview: (zone) =>
       set((state) => {
         state.activeSnapPreview = zone
@@ -296,7 +541,7 @@ export const useOsStore = create<OsState>()(
 
     openApp: (appId, payload) =>
       set((state) => {
-        const winId = appId.startsWith('wasm:') ? `win-${appId}` : `win-${appId}`
+        const winId = `win-${appId}`
         const existing = state.windows[winId]
         const nextZ = state.topZIndex + 1
         state.topZIndex = nextZ
@@ -318,7 +563,7 @@ export const useOsStore = create<OsState>()(
         const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
         const vh = typeof window !== 'undefined' ? window.innerHeight : 800
         const openCount = state.windowOrder.length
-        const cascadeOffset = (openCount % 6) * 26
+        const cascadeOffset = (openCount % 6) * 24
 
         if (appId.startsWith('wasm:')) {
           const pkgId = appId.slice(5)
@@ -358,8 +603,8 @@ export const useOsStore = create<OsState>()(
 
         const width = Math.min(meta.defaultWidth, vw - 60)
         const height = Math.min(meta.defaultHeight, vh - 110)
-        const x = Math.max(24, Math.round((vw - width) / 2) + cascadeOffset - 50)
-        const y = Math.max(42, Math.round((vh - height) / 2) + cascadeOffset - 40)
+        const x = Math.max(24, Math.round((vw - width) / 2) + cascadeOffset - 40)
+        const y = Math.max(42, Math.round((vh - height) / 2) + cascadeOffset - 36)
 
         const newWin: WindowInstance = {
           id: winId,
@@ -484,7 +729,7 @@ export const useOsStore = create<OsState>()(
           }
           const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
           const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-          const usableHeight = vh - 32 - 74 // Top bar 32px, bottom dock area 74px
+          const usableHeight = vh - 32 - 74
           const halfW = Math.floor((vw - 16) / 2)
           win.isMaximized = false
           win.snapState = snap
@@ -521,17 +766,18 @@ export const useOsStore = create<OsState>()(
 
     hydratePreferences: async () => {
       try {
-        const saved = await idbGet<PersistedPreferences>(PREFS_STORAGE_KEY)
-        if (saved) {
-          set((state) => {
-            if (saved.settings) {
-              state.settings = { ...DEFAULT_SETTINGS, ...saved.settings }
-            }
-            if (Array.isArray(saved.pinnedApps) && saved.pinnedApps.length > 0) {
-              state.pinnedApps = saved.pinnedApps
-            }
-          })
-        }
+        const [savedPrefs, savedNvram] = await Promise.all([
+          idbGet<PersistedPreferences>(PREFS_STORAGE_KEY),
+          idbGet<UefiNvramSettings>(NVRAM_STORAGE_KEY),
+        ])
+        set((state) => {
+          if (savedPrefs?.settings) {
+            state.settings = { ...DEFAULT_SETTINGS, ...savedPrefs.settings }
+          }
+          if (savedNvram) {
+            state.nvram = { ...DEFAULT_NVRAM, ...savedNvram }
+          }
+        })
       } catch {
         // ignore IndexedDB errors
       }

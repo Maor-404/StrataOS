@@ -234,8 +234,8 @@ export const CommandPalette: React.FC = () => {
       <div
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
-        className={`w-full max-w-xl overflow-hidden rounded-2xl border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.9)] ${
-          performanceMode ? 'bg-zinc-950' : 'bg-zinc-950/95 backdrop-blur-2xl'
+        className={`w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 shadow-[0_24px_80px_rgba(0,0,0,0.9)] ${
+          performanceMode ? 'bg-[#121215]' : 'bg-[#121215]/95 strata-chrome-blur'
         }`}
       >
         {/* Search Input Header */}

@@ -27,6 +27,7 @@ export interface StrataFilesProps {
 const BOOKMARK_PATHS = [
   { label: '/root', path: '/root', desc: 'Root Home' },
   { label: '/home/strata', path: '/home/strata', desc: 'User Workspace' },
+  { label: '/mnt/host', path: '/mnt/host', desc: 'Mounted Host Folder' },
   { label: '/opt/strata/apps', path: '/opt/strata/apps', desc: 'WASM Packages' },
   { label: '/etc/strata', path: '/etc/strata', desc: 'Registry & Config' },
   { label: '/usr/local/bin', path: '/usr/local/bin', desc: 'CLI Wrappers' },
@@ -162,6 +163,47 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
     await loadDirectory(currentDir)
   }
 
+  const handleMountHostFolder = async () => {
+    try {
+      const winWithPicker = window as Window & {
+        showDirectoryPicker?: () => Promise<{
+          name: string
+          values: () => AsyncIterable<{
+            kind: 'file' | 'directory'
+            name: string
+            getFile?: () => Promise<File>
+          }>
+        }>
+      }
+      await kernelClient.createDirectory('/mnt/host')
+      if (typeof winWithPicker.showDirectoryPicker === 'function') {
+        const dirHandle = await winWithPicker.showDirectoryPicker()
+        let count = 0
+        for await (const entry of dirHandle.values()) {
+          if (entry.kind === 'file' && entry.getFile) {
+            const file = await entry.getFile()
+            if (file.size <= 4 * 1024 * 1024) {
+              const ab = await file.arrayBuffer()
+              await kernelClient.writeFileBytes(`/mnt/host/${entry.name}`, new Uint8Array(ab))
+              count++
+            }
+          }
+        }
+        setStatusMsg(`Mounted host folder "${dirHandle.name}" (${count} files) at /mnt/host`)
+        await loadDirectory('/mnt/host')
+      } else {
+        await kernelClient.writeFileText(
+          '/mnt/host/HOST_MOUNT_README.txt',
+          'File System Access API (window.showDirectoryPicker) mount point at /mnt/host.\nUse Upload or Chromium showDirectoryPicker to sync host files directly into Linux.\n'
+        )
+        setStatusMsg('Initialized /mnt/host mount point')
+        await loadDirectory('/mnt/host')
+      }
+    } catch (err) {
+      setStatusMsg(`Host mount cancelled or unavailable: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   const handleCreateSubmit = async () => {
     const clean = newPromptName.trim()
     if (!clean || !newPromptType) return
@@ -235,6 +277,13 @@ export const StrataFiles: React.FC<StrataFilesProps> = ({ initialPath }) => {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => void handleMountHostFolder()}
+            className="inline-flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-2 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/25"
+            title="Mount Host Folder into /mnt/host via File System Access API"
+          >
+            <HardDrive className="h-3.5 w-3.5" /> Mount Host Folder
+          </button>
           <button
             onClick={() => {
               setNewPromptType('file')
