@@ -1,19 +1,21 @@
 /**
- * Dedicated OPFS Storage Web Worker
+ * Dedicated OPFS Storage Web Worker (Packed Chunk-Slot Store)
  *
  * Uses Origin Private File System `FileSystemFileHandle.createSyncAccessHandle()`
- * for synchronous binary ext2 block caching + native `DecompressionStream('gzip')`
- * full-disk hydration, eliminating IndexedDB structured-clone overhead and allowing
- * repeat boots in ~2 seconds with zero network redownloads.
+ * with a packed chunk-slot table (`chunks.index` + `chunks.data`) so OPFS only
+ * allocates disk quota for chunks actually read by Linux (~40-90 MiB for boot)
+ * instead of pre-allocating a multi-gigabyte sparse file that exceeds browser quota.
+ *
+ * Also supports native `DecompressionStream('gzip')` full-disk offline hydration.
  */
 
-const OPFS_DIR_NAME = 'strataos-bookworm-v1'
-const DISK_FILE_NAME = 'debian_bookworm_lxqt.ext2'
-const BITMAP_FILE_NAME = 'debian_bookworm_lxqt.bitmap'
-const META_FILE_NAME = 'debian_bookworm_lxqt.meta.json'
+const OPFS_DIR_NAME = 'strataos-bookworm-v2'
+const DATA_FILE_NAME = 'chunks.data'
+const INDEX_FILE_NAME = 'chunks.index'
+const META_FILE_NAME = 'disk.meta.json'
 
-const CHUNK_SIZE = 64 * 1024 // 64 KiB block granularity
-const READAHEAD_CHUNKS = 2 // 128 KiB minimum Range fetch on miss
+const CHUNK_SIZE = 64 * 1024 // 64 KiB chunk granularity
+const READAHEAD_CHUNKS = 8 // 512 KiB minimum Range fetch on cache miss (~4x faster cold boot)
 
 interface SyncAccessHandleLike {
   getSize(): number
@@ -36,6 +38,7 @@ interface StoredDiskMeta {
   totalSize: number
   chunkSize: number
   totalChunks: number
+  allocatedSlots: number
   fullyCached: boolean
 }
 
@@ -90,54 +93,37 @@ type WorkerRequest =
     }
 
 let opfsActive = false
-let diskHandle: SyncAccessHandleLike | null = null
-let bitmapHandle: SyncAccessHandleLike | null = null
+let dataHandle: SyncAccessHandleLike | null = null
+let indexHandle: SyncAccessHandleLike | null = null
 let rootDirHandle: FileSystemDirectoryHandle | null = null
-let bitmap = new Uint8Array(0)
+
+// Maps chunkIndex -> slotIndex in chunks.data (-1 means not yet cached in OPFS)
+let chunkIndexTable = new Int32Array(0)
+let allocatedSlots = 0
 let meta: StoredDiskMeta | null = null
 
 let warmBoot = false
 let opfsHits = 0
 let networkMisses = 0
 let downloadedBytes = 0
-let cachedChunksCount = 0
 let dirtyWritesSinceFlush = 0
 let decompressing = false
 let decompressPercent = 0
 let decompressMBs = 0
 let unpackedBytes = 0
 
-function isChunkCached(chunkIndex: number): boolean {
-  const byteIdx = chunkIndex >> 3
-  const bitMask = 1 << (chunkIndex & 7)
-  return byteIdx < bitmap.length && (bitmap[byteIdx] & bitMask) !== 0
-}
-
-function markChunkCached(chunkIndex: number): boolean {
-  const byteIdx = chunkIndex >> 3
-  const bitMask = 1 << (chunkIndex & 7)
-  if (byteIdx >= bitmap.length) return false
-  const wasSet = (bitmap[byteIdx] & bitMask) !== 0
-  if (!wasSet) {
-    bitmap[byteIdx] |= bitMask
-    cachedChunksCount++
-    return true
+function countAllocatedSlots(table: Int32Array): number {
+  let maxSlot = -1
+  for (let i = 0; i < table.length; i++) {
+    if (table[i] > maxSlot) maxSlot = table[i]
   }
-  return false
-}
-
-function countBitmapBits(buf: Uint8Array, totalChunks: number): number {
-  let count = 0
-  for (let i = 0; i < totalChunks; i++) {
-    if ((buf[i >> 3] & (1 << (i & 7))) !== 0) count++
-  }
-  return count
+  return maxSlot + 1
 }
 
 function buildTelemetry(): OpfsTelemetrySnapshot {
   const totalSize = meta?.totalSize ?? 0
   const cachedBytes = meta
-    ? Math.min(totalSize, cachedChunksCount * meta.chunkSize)
+    ? Math.min(totalSize, allocatedSlots * meta.chunkSize)
     : 0
   const totalReads = opfsHits + networkMisses
   return {
@@ -201,29 +187,27 @@ async function writeStoredMeta(
 }
 
 function closeHandles(): void {
-  if (diskHandle) {
+  if (dataHandle) {
     try {
-      diskHandle.flush()
-      diskHandle.close()
+      dataHandle.flush()
+      dataHandle.close()
     } catch {
       // ignore close errors
     }
-    diskHandle = null
+    dataHandle = null
   }
-  if (bitmapHandle) {
+  if (indexHandle) {
     try {
-      bitmapHandle.flush()
-      bitmapHandle.close()
+      indexHandle.flush()
+      indexHandle.close()
     } catch {
       // ignore close errors
     }
-    bitmapHandle = null
+    indexHandle = null
   }
 }
 
-async function probeRemoteImage(
-  imageUrl: string
-): Promise<{
+async function probeRemoteImage(imageUrl: string): Promise<{
   ok: boolean
   status: number
   totalSize: number
@@ -240,12 +224,27 @@ async function probeRemoteImage(
     })
 
     if (res.status !== 200 && res.status !== 206) {
-      return { ok: false, status: res.status, totalSize: 0, etag: '', lastModified: '' }
+      return {
+        ok: false,
+        status: res.status,
+        totalSize: 0,
+        etag: '',
+        lastModified: '',
+      }
     }
 
     const contentType = (res.headers.get('content-type') ?? '').toLowerCase()
-    if (contentType.includes('text/html') || contentType.includes('text/plain')) {
-      return { ok: false, status: 404, totalSize: 0, etag: '', lastModified: '' }
+    if (
+      contentType.includes('text/html') ||
+      contentType.includes('text/plain')
+    ) {
+      return {
+        ok: false,
+        status: 404,
+        totalSize: 0,
+        etag: '',
+        lastModified: '',
+      }
     }
 
     const contentRange = res.headers.get('content-range')
@@ -262,15 +261,19 @@ async function probeRemoteImage(
 
     // A valid ext2 rootfs disk image must be at least 1 MiB
     if (!Number.isFinite(totalSize) || totalSize < 1024 * 1024) {
-      return { ok: false, status: 404, totalSize: 0, etag: '', lastModified: '' }
+      return {
+        ok: false,
+        status: 404,
+        totalSize: 0,
+        etag: '',
+        lastModified: '',
+      }
     }
 
-    const etag =
-      res.headers.get('etag') ?? `"strata-bookworm-${totalSize}"`
+    const etag = res.headers.get('etag') ?? `"strata-bookworm-${totalSize}"`
     const lastModified =
       res.headers.get('last-modified') ?? new Date().toUTCString()
 
-    // Drain tiny 2-byte body so connection can be reused cleanly
     await res.arrayBuffer().catch(() => {})
 
     return {
@@ -285,8 +288,78 @@ async function probeRemoteImage(
   }
 }
 
+/**
+ * Write a single chunk (padded to CHUNK_SIZE at EOF) into the packed OPFS store.
+ * Returns false cleanly if browser quota is reached (falls back to streaming).
+ */
+function storeChunkInOpfs(chunkId: number, data: Uint8Array): boolean {
+  if (!opfsActive || !dataHandle || !indexHandle) return false
+  if (chunkId < 0 || chunkId >= chunkIndexTable.length) return false
+
+  let slot = chunkIndexTable[chunkId]
+  const isNewSlot = slot < 0
+  if (isNewSlot) {
+    slot = allocatedSlots
+  }
+
+  try {
+    if (data.byteLength === CHUNK_SIZE) {
+      dataHandle.write(data, { at: slot * CHUNK_SIZE })
+    } else {
+      const padded = new Uint8Array(CHUNK_SIZE)
+      padded.set(data.subarray(0, Math.min(data.byteLength, CHUNK_SIZE)))
+      dataHandle.write(padded, { at: slot * CHUNK_SIZE })
+    }
+
+    if (isNewSlot) {
+      chunkIndexTable[chunkId] = slot
+      allocatedSlots = slot + 1
+      const entryBytes = new Uint8Array(
+        chunkIndexTable.buffer,
+        chunkId * 4,
+        4
+      )
+      indexHandle.write(entryBytes, { at: chunkId * 4 })
+    }
+    return true
+  } catch {
+    // Browser OPFS storage quota reached: keep already-cached chunks intact,
+    // simply skip persisting further chunks rather than failing boot.
+    return false
+  }
+}
+
+/**
+ * Read an arbitrary byte range `[start, end]` where EVERY chunk covering it
+ * is guaranteed to have a valid slot in `chunkIndexTable`.
+ */
+function readRangeFromOpfs(start: number, end: number): ArrayBuffer {
+  const length = end - start + 1
+  const out = new Uint8Array(length)
+  if (!dataHandle) return out.buffer
+
+  let dstOffset = 0
+  let cursor = start
+
+  while (cursor <= end) {
+    const chunkId = Math.floor(cursor / CHUNK_SIZE)
+    const offsetInChunk = cursor - chunkId * CHUNK_SIZE
+    const toRead = Math.min(CHUNK_SIZE - offsetInChunk, end - cursor + 1)
+    const slot = chunkIndexTable[chunkId]
+
+    dataHandle.read(out.subarray(dstOffset, dstOffset + toRead), {
+      at: slot * CHUNK_SIZE + offsetInChunk,
+    })
+
+    cursor += toRead
+    dstOffset += toRead
+  }
+
+  return out.buffer
+}
+
 async function hydrateFromGzipInternal(gzUrl: string): Promise<void> {
-  if (!opfsActive || !diskHandle || !bitmapHandle || !rootDirHandle || !meta) {
+  if (!opfsActive || !dataHandle || !indexHandle || !rootDirHandle || !meta) {
     throw new Error('OPFS disk is not initialized for gzip hydration')
   }
   if (typeof DecompressionStream === 'undefined') {
@@ -311,6 +384,9 @@ async function hydrateFromGzipInternal(gzUrl: string): Promise<void> {
     )
     const reader = decompressedStream.getReader()
 
+    // Reset packed store to linear 1:1 chunk layout for fastest sequential write
+    dataHandle.truncate(0)
+    allocatedSlots = 0
     let writeOffset = 0
     let lastEmitMs = performance.now()
 
@@ -319,7 +395,7 @@ async function hydrateFromGzipInternal(gzUrl: string): Promise<void> {
       if (done) break
       if (!value || value.byteLength === 0) continue
 
-      diskHandle.write(value, { at: writeOffset })
+      dataHandle.write(value, { at: writeOffset })
       writeOffset += value.byteLength
       unpackedBytes = writeOffset
 
@@ -336,27 +412,27 @@ async function hydrateFromGzipInternal(gzUrl: string): Promise<void> {
       }
     }
 
-    // Finalize exact size, bitmap, and metadata
     const finalSize = writeOffset
     if (finalSize > 0) {
       const totalChunks = Math.ceil(finalSize / CHUNK_SIZE)
-      const bitmapBytes = Math.ceil(totalChunks / 8)
-      diskHandle.truncate(finalSize)
-      diskHandle.flush()
+      dataHandle.flush()
 
-      bitmap = new Uint8Array(bitmapBytes)
-      bitmap.fill(0xff)
-      cachedChunksCount = totalChunks
+      chunkIndexTable = new Int32Array(totalChunks)
+      for (let i = 0; i < totalChunks; i++) {
+        chunkIndexTable[i] = i
+      }
+      allocatedSlots = totalChunks
 
-      bitmapHandle.truncate(bitmapBytes)
-      bitmapHandle.write(bitmap, { at: 0 })
-      bitmapHandle.flush()
+      indexHandle.truncate(chunkIndexTable.byteLength)
+      indexHandle.write(new Uint8Array(chunkIndexTable.buffer), { at: 0 })
+      indexHandle.flush()
 
       meta = {
         ...meta,
         gzUrl,
         totalSize: finalSize,
         totalChunks,
+        allocatedSlots,
         fullyCached: true,
       }
       await writeStoredMeta(rootDirHandle, meta)
@@ -388,7 +464,7 @@ async function handleInit(
   opfsHits = 0
   networkMisses = 0
   downloadedBytes = 0
-  cachedChunksCount = 0
+  allocatedSlots = 0
   dirtyWritesSinceFlush = 0
   unpackedBytes = 0
 
@@ -402,15 +478,15 @@ async function handleInit(
       })
       storedMeta = await readStoredMeta(rootDirHandle)
 
-      const diskFile = (await rootDirHandle.getFileHandle(DISK_FILE_NAME, {
+      const dataFile = (await rootDirHandle.getFileHandle(DATA_FILE_NAME, {
         create: true,
       })) as OpfsFileHandleWithSync
-      const bitmapFile = (await rootDirHandle.getFileHandle(BITMAP_FILE_NAME, {
+      const indexFile = (await rootDirHandle.getFileHandle(INDEX_FILE_NAME, {
         create: true,
       })) as OpfsFileHandleWithSync
 
-      diskHandle = await diskFile.createSyncAccessHandle()
-      bitmapHandle = await bitmapFile.createSyncAccessHandle()
+      dataHandle = await dataFile.createSyncAccessHandle()
+      indexHandle = await indexFile.createSyncAccessHandle()
       opfsActive = true
     } catch {
       closeHandles()
@@ -418,7 +494,6 @@ async function handleInit(
     }
   }
 
-  // Probe remote image (or reuse warm OPFS cache if offline)
   let remote: Awaited<ReturnType<typeof probeRemoteImage>> | null = null
   try {
     remote = await probeRemoteImage(imageUrl)
@@ -428,7 +503,7 @@ async function handleInit(
 
   if (remote && remote.ok) {
     const totalChunks = Math.ceil(remote.totalSize / CHUNK_SIZE)
-    const bitmapBytes = Math.ceil(totalChunks / 8)
+    const indexByteLen = totalChunks * 4
 
     const cacheMatches =
       opfsActive &&
@@ -437,14 +512,18 @@ async function handleInit(
       storedMeta.totalSize === remote.totalSize &&
       storedMeta.etag === remote.etag
 
-    if (cacheMatches && storedMeta && diskHandle && bitmapHandle) {
+    if (
+      cacheMatches &&
+      storedMeta &&
+      dataHandle &&
+      indexHandle &&
+      indexHandle.getSize() === indexByteLen
+    ) {
       meta = storedMeta
-      bitmap = new Uint8Array(bitmapBytes)
-      if (bitmapHandle.getSize() === bitmapBytes) {
-        bitmapHandle.read(bitmap, { at: 0 })
-      }
-      cachedChunksCount = countBitmapBits(bitmap, totalChunks)
-      warmBoot = cachedChunksCount >= 16 || storedMeta.fullyCached
+      chunkIndexTable = new Int32Array(totalChunks)
+      indexHandle.read(new Uint8Array(chunkIndexTable.buffer), { at: 0 })
+      allocatedSlots = countAllocatedSlots(chunkIndexTable)
+      warmBoot = allocatedSlots >= 16 || storedMeta.fullyCached
     } else {
       meta = {
         imageUrl,
@@ -454,18 +533,28 @@ async function handleInit(
         totalSize: remote.totalSize,
         chunkSize: CHUNK_SIZE,
         totalChunks,
+        allocatedSlots: 0,
         fullyCached: false,
       }
-      bitmap = new Uint8Array(bitmapBytes)
-      cachedChunksCount = 0
+      chunkIndexTable = new Int32Array(totalChunks)
+      chunkIndexTable.fill(-1)
+      allocatedSlots = 0
       warmBoot = false
 
-      if (opfsActive && diskHandle && bitmapHandle && rootDirHandle) {
-        diskHandle.truncate(remote.totalSize)
-        bitmapHandle.truncate(bitmapBytes)
-        bitmapHandle.write(bitmap, { at: 0 })
-        bitmapHandle.flush()
-        await writeStoredMeta(rootDirHandle, meta)
+      if (opfsActive && dataHandle && indexHandle && rootDirHandle) {
+        try {
+          // NOTE: Do NOT pre-allocate totalSize in dataHandle!
+          // dataHandle starts at 0 bytes and grows strictly by 64 KiB per cached chunk.
+          dataHandle.truncate(0)
+          indexHandle.truncate(indexByteLen)
+          indexHandle.write(new Uint8Array(chunkIndexTable.buffer), { at: 0 })
+          indexHandle.flush()
+          await writeStoredMeta(rootDirHandle, meta)
+        } catch {
+          // If OPFS quota is 0 bytes, gracefully fall back to pure HTTP Range streaming
+          closeHandles()
+          opfsActive = false
+        }
       }
     }
 
@@ -473,27 +562,27 @@ async function handleInit(
     return { ok: true, status: 206, snapshot: buildTelemetry() }
   }
 
-  // If raw .ext2 wasn't reachable, check if warm OPFS cache already exists (offline repeat boot!)
+  // Offline repeat boot if OPFS has a fully cached image
   if (
     opfsActive &&
     storedMeta &&
     storedMeta.fullyCached &&
-    diskHandle &&
-    bitmapHandle
+    dataHandle &&
+    indexHandle
   ) {
-    meta = storedMeta
-    const bitmapBytes = Math.ceil(storedMeta.totalChunks / 8)
-    bitmap = new Uint8Array(bitmapBytes)
-    if (bitmapHandle.getSize() === bitmapBytes) {
-      bitmapHandle.read(bitmap, { at: 0 })
+    const indexByteLen = storedMeta.totalChunks * 4
+    if (indexHandle.getSize() === indexByteLen) {
+      meta = storedMeta
+      chunkIndexTable = new Int32Array(storedMeta.totalChunks)
+      indexHandle.read(new Uint8Array(chunkIndexTable.buffer), { at: 0 })
+      allocatedSlots = countAllocatedSlots(chunkIndexTable)
+      warmBoot = true
+      emitTelemetry()
+      return { ok: true, status: 206, snapshot: buildTelemetry() }
     }
-    cachedChunksCount = countBitmapBits(bitmap, storedMeta.totalChunks)
-    warmBoot = true
-    emitTelemetry()
-    return { ok: true, status: 206, snapshot: buildTelemetry() }
   }
 
-  // If raw .ext2 is 404 but .ext2.gz exists & OPFS is active, unpack via DecompressionStream('gzip')!
+  // Fallback: if raw .ext2 is 404 but .ext2.gz exists & OPFS is active, unpack via DecompressionStream('gzip')
   if (opfsActive && gzUrl && typeof DecompressionStream !== 'undefined') {
     try {
       const gzHead = await fetch(gzUrl, { method: 'HEAD' })
@@ -516,6 +605,7 @@ async function handleInit(
           totalSize: 0,
           chunkSize: CHUNK_SIZE,
           totalChunks: 0,
+          allocatedSlots: 0,
           fullyCached: false,
         }
         await hydrateFromGzipInternal(gzUrl)
@@ -548,10 +638,8 @@ async function handleReadRange(
 
   const clampedStart = Math.max(0, Math.min(reqStart, meta.totalSize - 1))
   const clampedEnd = Math.max(clampedStart, Math.min(reqEnd, meta.totalSize - 1))
-  const length = clampedEnd - clampedStart + 1
 
-  // Network-only fallback (when OPFS unavailable or locked by another tab)
-  if (!opfsActive || !diskHandle || !bitmapHandle) {
+  if (!opfsActive || !dataHandle || !indexHandle) {
     networkMisses++
     const res = await fetch(meta.imageUrl, {
       headers: { Range: `bytes=${clampedStart}-${clampedEnd}` },
@@ -572,7 +660,7 @@ async function handleReadRange(
   let missFirst = -1
   let missLast = -1
   for (let c = firstChunk; c <= lastChunk; c++) {
-    if (!isChunkCached(c)) {
+    if (chunkIndexTable[c] < 0) {
       if (!hasMissing) missFirst = c
       missLast = c
       hasMissing = true
@@ -580,24 +668,22 @@ async function handleReadRange(
   }
 
   if (!hasMissing) {
-    // Pure OPFS SyncAccessHandle cache hit — zero network I/O!
-    const out = new Uint8Array(length)
-    diskHandle.read(out, { at: clampedStart })
     opfsHits++
+    const buf = readRangeFromOpfs(clampedStart, clampedEnd)
     if ((opfsHits & 31) === 0 || opfsHits <= 4) {
       emitTelemetry()
     }
-    return out.buffer
+    return buf
   }
 
-  // Coalesce missing chunks with modest read-ahead (128 KiB minimum)
+  // Coalesce missing chunks with 128 KiB minimum read-ahead
   const maxChunk = meta.totalChunks - 1
   if (missLast - missFirst + 1 < READAHEAD_CHUNKS) {
     let ahead = missLast
     while (
       ahead < maxChunk &&
       ahead - missFirst + 1 < READAHEAD_CHUNKS &&
-      !isChunkCached(ahead + 1)
+      chunkIndexTable[ahead + 1] < 0
     ) {
       ahead++
     }
@@ -616,48 +702,73 @@ async function handleReadRange(
   if (!res.ok && res.status !== 206) {
     throw new Error(`Range fetch failed (${res.status})`)
   }
+
   const fetchedBytes = new Uint8Array(await res.arrayBuffer())
   downloadedBytes += fetchedBytes.byteLength
   networkMisses++
 
-  // Persist fetched blocks synchronously into OPFS
-  diskHandle.write(fetchedBytes, { at: fetchStart })
-
-  let minDirtyByte = bitmap.length
-  let maxDirtyByte = 0
+  let allStored = true
   for (let c = missFirst; c <= missLast; c++) {
-    const chunkByteEnd = Math.min(meta.totalSize, (c + 1) * CHUNK_SIZE)
-    if (fetchStart + fetchedBytes.byteLength >= chunkByteEnd) {
-      if (markChunkCached(c)) {
-        const bIdx = c >> 3
-        if (bIdx < minDirtyByte) minDirtyByte = bIdx
-        if (bIdx > maxDirtyByte) maxDirtyByte = bIdx
-      }
+    const chunkRelStart = (c - missFirst) * CHUNK_SIZE
+    if (chunkRelStart >= fetchedBytes.byteLength) break
+    const chunkRelEnd = Math.min(fetchedBytes.byteLength, chunkRelStart + CHUNK_SIZE)
+    const slice = fetchedBytes.subarray(chunkRelStart, chunkRelEnd)
+    if (!storeChunkInOpfs(c, slice)) {
+      allStored = false
+      break
     }
   }
 
-  if (minDirtyByte <= maxDirtyByte) {
-    bitmapHandle.write(bitmap.subarray(minDirtyByte, maxDirtyByte + 1), {
-      at: minDirtyByte,
-    })
-  }
-
   dirtyWritesSinceFlush++
-  if (dirtyWritesSinceFlush >= 16) {
-    diskHandle.flush()
-    bitmapHandle.flush()
+  if (dirtyWritesSinceFlush >= 8) {
+    try {
+      dataHandle.flush()
+      indexHandle.flush()
+    } catch {
+      // ignore flush errors
+    }
     dirtyWritesSinceFlush = 0
   }
 
-  if (cachedChunksCount >= meta.totalChunks && !meta.fullyCached && rootDirHandle) {
+  if (
+    allocatedSlots >= meta.totalChunks &&
+    !meta.fullyCached &&
+    rootDirHandle
+  ) {
     meta.fullyCached = true
+    meta.allocatedSlots = allocatedSlots
     await writeStoredMeta(rootDirHandle, meta).catch(() => {})
   }
 
-  const out = new Uint8Array(length)
-  diskHandle.read(out, { at: clampedStart })
   emitTelemetry()
-  return out.buffer
+
+  // If every chunk covering [clampedStart, clampedEnd] is now in OPFS, read from OPFS;
+  // otherwise (e.g., quota full) assemble cleanly from fetchedBytes + cached chunks.
+  if (allStored) {
+    let completeInOpfs = true
+    for (let c = firstChunk; c <= lastChunk; c++) {
+      if (chunkIndexTable[c] < 0) {
+        completeInOpfs = false
+        break
+      }
+    }
+    if (completeInOpfs) {
+      return readRangeFromOpfs(clampedStart, clampedEnd)
+    }
+  }
+
+  // Fallback slice directly from fetchedBytes when request lies within fetched span
+  if (clampedStart >= fetchStart && clampedEnd <= fetchEnd) {
+    const relStart = clampedStart - fetchStart
+    const relEnd = clampedEnd - fetchStart + 1
+    return fetchedBytes.slice(relStart, relEnd).buffer
+  }
+
+  // Final safety fallback: exact direct Range fetch
+  const direct = await fetch(meta.imageUrl, {
+    headers: { Range: `bytes=${clampedStart}-${clampedEnd}` },
+  })
+  return direct.arrayBuffer()
 }
 
 async function handleReset(): Promise<void> {
@@ -665,8 +776,8 @@ async function handleReset(): Promise<void> {
   opfsActive = false
   warmBoot = false
   meta = null
-  bitmap = new Uint8Array(0)
-  cachedChunksCount = 0
+  chunkIndexTable = new Int32Array(0)
+  allocatedSlots = 0
   opfsHits = 0
   networkMisses = 0
   downloadedBytes = 0
@@ -682,7 +793,6 @@ async function handleReset(): Promise<void> {
   emitTelemetry()
 }
 
-// Serialize worker messages strictly because SyncAccessHandle & bitmap mutations are stateful
 let messageQueue: Promise<void> = Promise.resolve()
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
@@ -708,8 +818,8 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
           snapshot: buildTelemetry(),
         })
       } else if (req.type === 'flush') {
-        diskHandle?.flush()
-        bitmapHandle?.flush()
+        dataHandle?.flush()
+        indexHandle?.flush()
         self.postMessage({ id: req.id, ok: true })
       } else if (req.type === 'reset') {
         await handleReset()

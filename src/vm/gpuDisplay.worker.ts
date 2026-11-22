@@ -54,10 +54,21 @@ interface GpuDeviceLike {
   createBindGroup(descriptor: unknown): unknown
   createCommandEncoder(): GpuCommandEncoderLike
   destroy(): void
+  addEventListener?: (
+    type: string,
+    listener: (ev: { error?: { message?: string } }) => void
+  ) => void
 }
 
 interface GpuAdapterLike {
-  info?: { vendor?: string; architecture?: string; description?: string }
+  isFallbackAdapter?: boolean
+  info?: {
+    vendor?: string
+    architecture?: string
+    description?: string
+    device?: string
+    isFallbackAdapter?: boolean
+  }
   requestDevice(): Promise<GpuDeviceLike>
 }
 
@@ -153,11 +164,13 @@ let lastRenderedSeq = 0
 
 // Single reusable non-shared scratch buffer (WebGPU writeTexture & ImageData disallow SAB views)
 let uploadScratch = new Uint8ClampedArray(0)
+let alignedScratch = new Uint8ClampedArray(0)
 let hasPendingTransferFrame = false
 
 // WebGPU objects
 let gpuDevice: GpuDeviceLike | null = null
 let gpuCtx: GpuCanvasContextLike | null = null
+let gpuFormat = 'bgra8unorm'
 let gpuPipeline: { getBindGroupLayout(index: number): unknown } | null = null
 let gpuSampler: unknown = null
 let gpuTexture: GpuTextureLike | null = null
@@ -213,12 +226,34 @@ async function initWebGpu(offscreen: OffscreenCanvas): Promise<boolean> {
   if (!nav.gpu) return false
 
   try {
-    const adapter = await nav.gpu.requestAdapter({
+    const adapter = (await nav.gpu.requestAdapter({
       powerPreference: 'high-performance',
-    })
+    })) as GpuAdapterLike | null
     if (!adapter) return false
 
+    const desc = [
+      adapter.info?.description,
+      adapter.info?.vendor,
+      adapter.info?.architecture,
+      adapter.info?.device,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    if (
+      adapter.isFallbackAdapter ||
+      adapter.info?.isFallbackAdapter ||
+      desc.includes('swiftshader') ||
+      desc.includes('llvmpipe')
+    ) {
+      return false
+    }
+
     const device = await adapter.requestDevice()
+    device.addEventListener?.('uncapturederror', (ev) => {
+      console.warn('[gpuDisplay] WebGPU uncaptured error:', ev.error?.message ?? ev)
+    })
+
     const context = offscreen.getContext('webgpu') as unknown as GpuCanvasContextLike | null
     if (!context) {
       device.destroy()
@@ -226,6 +261,7 @@ async function initWebGpu(offscreen: OffscreenCanvas): Promise<boolean> {
     }
 
     const format = nav.gpu.getPreferredCanvasFormat()
+    gpuFormat = format
     context.configure({
       device,
       format,
@@ -298,16 +334,33 @@ function syncBuffers(
     uploadScratch = new Uint8ClampedArray(byteLen)
   }
 
+  const rowBytes = fbWidth * 4
+  const alignedRowBytes = Math.ceil(rowBytes / 256) * 256
+  if (alignedRowBytes !== rowBytes) {
+    const alignedTotal = alignedRowBytes * fbHeight
+    if (alignedScratch.byteLength !== alignedTotal) {
+      alignedScratch = new Uint8ClampedArray(alignedTotal)
+    }
+  } else if (alignedScratch.byteLength !== 0) {
+    alignedScratch = new Uint8ClampedArray(0)
+  }
+
   if (sharedCtrl && sharedPixels && sharedPixels.byteLength >= byteLen) {
     ctrlView = new Int32Array(sharedCtrl)
     sharedPixelsView = new Uint8ClampedArray(sharedPixels, 0, byteLen)
-    lastRenderedSeq = Atomics.load(ctrlView, 0)
+    // Always start at 0 so frames written before init/resize completes are blitted immediately
+    lastRenderedSeq = 0
   } else {
     ctrlView = null
     sharedPixelsView = null
   }
 
-  if (backend === 'webgpu') {
+  if (backend === 'webgpu' && gpuCtx && gpuDevice) {
+    gpuCtx.configure({
+      device: gpuDevice,
+      format: gpuFormat,
+      alphaMode: 'opaque',
+    })
     recreateWebGpuTexture(fbWidth, fbHeight)
   }
 }
@@ -329,10 +382,24 @@ function recordFrameTiming(): void {
 function blitWebGpu(): void {
   if (!gpuDevice || !gpuCtx || !gpuTexture || !gpuPipeline || !gpuBindGroup) return
 
+  const rowBytes = fbWidth * 4
+  const alignedRowBytes = Math.ceil(rowBytes / 256) * 256
+  let srcData = uploadScratch
+  if (alignedRowBytes !== rowBytes) {
+    for (let y = 0; y < fbHeight; y++) {
+      const srcOff = y * rowBytes
+      alignedScratch.set(
+        uploadScratch.subarray(srcOff, srcOff + rowBytes),
+        y * alignedRowBytes
+      )
+    }
+    srcData = alignedScratch
+  }
+
   gpuDevice.queue.writeTexture(
     { texture: gpuTexture },
-    uploadScratch,
-    { bytesPerRow: fbWidth * 4, rowsPerImage: fbHeight },
+    srcData,
+    { bytesPerRow: alignedRowBytes, rowsPerImage: fbHeight },
     { width: fbWidth, height: fbHeight, depthOrArrayLayers: 1 }
   )
 

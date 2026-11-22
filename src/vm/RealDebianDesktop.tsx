@@ -284,7 +284,18 @@ export const RealDebianDesktop: React.FC = () => {
         if (!cancelled) setOpfsState(snap)
       })
 
-      const opfsInit = await opfsCache.init(imageUrl, gzUrl)
+      let opfsInit: Awaited<ReturnType<OpfsDiskCache['init']>>
+      try {
+        opfsInit = await opfsCache.init(imageUrl, gzUrl)
+      } catch (err) {
+        if (cancelled) return
+        setStage('error')
+        setErrorInfo({
+          title: 'OPFS Cache Initialization Failed',
+          detail: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
       if (cancelled) return
 
       if (!opfsInit.ok) {
@@ -315,8 +326,19 @@ export const RealDebianDesktop: React.FC = () => {
         )) as unknown as CheerpXIdbDevice
         idbOverlayRef.current = idbDevice
 
-        if (params.get('reset') === '1') {
+        const prevEtag =
+          typeof localStorage !== 'undefined'
+            ? localStorage.getItem('strataos-bookworm-etag')
+            : null
+        const currentEtag = opfsInit.state.etag
+        const imageChanged = Boolean(
+          prevEtag && currentEtag && prevEtag !== currentEtag
+        )
+        if (params.get('reset') === '1' || imageChanged) {
           await idbDevice.reset()
+        }
+        if (typeof localStorage !== 'undefined' && currentEtag) {
+          localStorage.setItem('strataos-bookworm-etag', currentEtag)
         }
 
         const overlayDevice = await CheerpX.OverlayDevice.create(
@@ -326,6 +348,65 @@ export const RealDebianDesktop: React.FC = () => {
           >[1]
         )
         const dataDevice = await CheerpX.DataDevice.create()
+        await dataDevice.writeFile(
+          '/10-cheerpx-noglamor.conf',
+          [
+            'Section "ServerFlags"',
+            '  Option "AutoAddDevices" "false"',
+            '  Option "AutoEnableDevices" "false"',
+            'EndSection',
+            '',
+            'Section "Device"',
+            '  Identifier "CheerpX KMS"',
+            '  Driver "modesetting"',
+            '  Option "AccelMethod" "none"',
+            '  Option "ShadowFB" "true"',
+            'EndSection',
+            '',
+            'Section "Screen"',
+            '  Identifier "CheerpX Screen"',
+            '  Device "CheerpX KMS"',
+            'EndSection',
+            '',
+            'Section "InputDevice"',
+            '  Identifier "CheerpX Keyboard"',
+            '  Driver "kbd"',
+            '  Option "Protocol" "standard"',
+            '  Option "XkbModel" "pc105"',
+            '  Option "XkbLayout" "us"',
+            'EndSection',
+            '',
+            'Section "InputDevice"',
+            '  Identifier "CheerpX Pointer"',
+            '  Driver "evdev"',
+            '  Option "Device" "/dev/input/event1"',
+            'EndSection',
+            '',
+            'Section "ServerLayout"',
+            '  Identifier "CheerpX Layout"',
+            '  Screen 0 "CheerpX Screen"',
+            '  InputDevice "CheerpX Keyboard" "CoreKeyboard"',
+            '  InputDevice "CheerpX Pointer" "CorePointer"',
+            'EndSection',
+            '',
+          ].join('\n')
+        )
+        await dataDevice.writeFile(
+          '/fonts.conf',
+          [
+            '<?xml version="1.0"?>',
+            '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">',
+            '<fontconfig>',
+            '  <dir>/usr/share/fonts/truetype/dejavu</dir>',
+            '  <cachedir>/var/cache/fontconfig</cachedir>',
+            '  <cachedir>/tmp/strata-fc-cache</cachedir>',
+            '  <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>',
+            '  <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>',
+            '  <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>',
+            '</fontconfig>',
+            '',
+          ].join('\n')
+        )
         if (cancelled) return
 
         const mounts = [
@@ -371,17 +452,40 @@ export const RealDebianDesktop: React.FC = () => {
 
         setStage('starting-xorg')
 
-        // Auto-boot real Xorg + Openbox + LXQt-panel as non-root `strata` (uid 1000)
+        // Clean stale X11 lockfiles & install CheerpX KMS noglamor + kbd/evdev xorg.conf
+        await cx.run(
+          '/bin/sh',
+          [
+            '-c',
+            'rm -f /tmp/.X*-lock /tmp/.X11-unix/X* /etc/X11/xorg.conf /etc/X11/xorg.conf.d/10-cheerpx-noglamor.conf && mkdir -p /etc/X11/xorg.conf.d /tmp/.X11-unix /tmp/strata-fc-cache && chmod 1777 /tmp /tmp/.X11-unix /tmp/strata-fc-cache && cat /data/10-cheerpx-noglamor.conf > /etc/X11/xorg.conf',
+          ],
+          { uid: 0, gid: 0 }
+        )
+        if (cancelled) return
+
+        // Auto-boot real Xorg + Openbox + LXQt-panel + PCManFM-Qt + Terminal as non-root `strata` (uid 1000)
         while (!cancelled) {
           const exitRes = await cx.run(
             '/usr/bin/xinit',
-            ['/home/strata/.xinitrc', '--', '/usr/bin/Xorg', '-retro'],
+            ['/home/strata/.xinitrc', '--', '/usr/bin/Xorg', '-retro', '-extension', 'GLX'],
             {
               env: [
                 'HOME=/home/strata',
                 'USER=strata',
+                'SHELL=/bin/bash',
+                'TERM=xterm-256color',
+                'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
                 'DISPLAY=:0',
                 'XDG_RUNTIME_DIR=/tmp/runtime-strata',
+                'XDG_CURRENT_DESKTOP=LXQt',
+                'DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/no-dbus',
+                'FONTCONFIG_FILE=/data/fonts.conf',
+                'QT_QPA_PLATFORM=xcb',
+                'QT_QPA_PLATFORMTHEME=lxqt',
+                'QT_STYLE_OVERRIDE=Fusion',
+                'QT_XCB_GL_INTEGRATION=none',
+                'QT_X11_NO_MITSHM=1',
+                'LIBGL_ALWAYS_SOFTWARE=0',
               ],
               cwd: '/home/strata',
               uid: 1000,

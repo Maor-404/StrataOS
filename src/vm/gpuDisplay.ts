@@ -347,6 +347,21 @@ export class GpuDisplayPipeline {
       this.dispatchKmsEvent('contextmenu', e)
     }
 
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      this.dispatchKmsEvent('wheel', {
+        type: 'wheel',
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaZ: e.deltaZ,
+        deltaMode: e.deltaMode,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        currentTarget: canvas,
+        preventDefault: () => e.preventDefault(),
+      })
+    }
+
     const onFullscreenChange = () => {
       const inFs = Boolean(document.fullscreenElement)
       this.state.isFullscreen = inFs
@@ -361,6 +376,7 @@ export class GpuDisplayPipeline {
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointercancel', onPointerUp)
     canvas.addEventListener('contextmenu', onContextMenu)
+    canvas.addEventListener('wheel', onWheel, { passive: false })
     document.addEventListener('fullscreenchange', onFullscreenChange)
 
     this.cleanupDomListeners.push(
@@ -369,6 +385,7 @@ export class GpuDisplayPipeline {
       () => canvas.removeEventListener('pointerup', onPointerUp),
       () => canvas.removeEventListener('pointercancel', onPointerUp),
       () => canvas.removeEventListener('contextmenu', onContextMenu),
+      () => canvas.removeEventListener('wheel', onWheel),
       () => document.removeEventListener('fullscreenchange', onFullscreenChange)
     )
   }
