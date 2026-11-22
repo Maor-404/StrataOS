@@ -6,7 +6,7 @@
 
 **Real Linux 7.x Kernel & WASM Package Manager in Your Browser**
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Launch_StrataOS-22d3ee?style=for-the-badge&logo=linux&logoColor=09090b)](https://strata-os.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Launch_StrataOS-22d3ee?style=for-the-badge&logo=linux&logoColor=09090b)](https://sonic-koto-mowjpsl.tmp.now)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMaor-404%2FStrataOS&project-name=strata-os&repository-name=strata-os)
 [![Deploy Maor-404/StrataOS](https://img.shields.io/badge/Vercel-One--Click_Deploy-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMaor-404%2FStrataOS&project-name=strata-os&repository-name=strata-os)
 
