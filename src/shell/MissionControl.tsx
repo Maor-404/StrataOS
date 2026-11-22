@@ -1,186 +1,238 @@
-import React from 'react';
-import { useOsStore } from '../state/osStore';
-import { AppIcon } from './AppIcon';
-import { Layers, X, Plus, Maximize2 } from 'lucide-react';
+import { Layers, Maximize2, Pin, Plus, Search, X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useOsStore } from '../state/osStore'
+import { AppIcon } from './AppIcon'
 
 export const MissionControl: React.FC = () => {
-  const missionControlOpen = useOsStore((s) => s.missionControlOpen);
-  const setMissionControlOpen = useOsStore((s) => s.setMissionControlOpen);
-  const activeWorkspace = useOsStore((s) => s.activeWorkspace);
-  const setWorkspace = useOsStore((s) => s.setActiveWorkspace);
-  const windows = useOsStore((s) => s.windows);
-  const focusWindow = useOsStore((s) => s.focusWindow);
-  const closeWindow = useOsStore((s) => s.closeWindow);
-  const openApp = useOsStore((s) => s.openApp);
+  const overviewOpen = useOsStore((s) => s.missionControlOpen)
+  const setOverviewOpen = useOsStore((s) => s.setMissionControlOpen)
+  const activeWorkspace = useOsStore((s) => s.activeWorkspace)
+  const setWorkspace = useOsStore((s) => s.setActiveWorkspace)
+  const windows = useOsStore((s) => s.windows)
+  const focusWindow = useOsStore((s) => s.focusWindow)
+  const closeWindow = useOsStore((s) => s.closeWindow)
+  const openApp = useOsStore((s) => s.openApp)
 
-  if (!missionControlOpen) return null;
+  const [filter, setFilter] = useState('')
+  const [showAllDesktops, setShowAllDesktops] = useState(false)
 
-  const allWindows = Object.values(windows);
+  useEffect(() => {
+    if (!overviewOpen) return
+    setFilter('')
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOverviewOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [overviewOpen, setOverviewOpen])
+
+  if (!overviewOpen) return null
+
+  const allWindows = Object.values(windows)
+  const visibleWindows = allWindows
+    .filter((w) => (showAllDesktops ? true : w.workspace === activeWorkspace))
+    .filter((w) =>
+      filter.trim() ? w.title.toLowerCase().includes(filter.trim().toLowerCase()) : true
+    )
+    .sort((a, b) => b.zIndex - a.zIndex)
 
   const handleSelectWindow = (winId: string, ws: 1 | 2 | 3) => {
-    setWorkspace(ws);
-    focusWindow(winId);
-    setMissionControlOpen(false);
-  };
+    setWorkspace(ws)
+    focusWindow(winId)
+    setOverviewOpen(false)
+  }
 
   return (
     <div
-      className="fixed inset-0 z-[8500] strata-chrome-blur bg-black/80 flex flex-col p-6 select-none animate-in fade-in duration-150"
-      onClick={() => setMissionControlOpen(false)}
+      id="plasma-overview"
+      role="dialog"
+      aria-label="KDE Plasma Overview"
+      className="fixed inset-0 z-[8800] plasma-panel-blur flex flex-col gap-5 p-6 select-none"
+      style={{ backgroundColor: 'rgba(15, 18, 21, 0.84)' }}
+      onClick={() => setOverviewOpen(false)}
     >
-      {/* Header & Workspace Switcher Bar */}
+      {/* Top Virtual Desktops 1–3 Strip */}
       <div
-        className="flex items-center justify-between max-w-5xl w-full mx-auto mb-6 px-4 py-2.5 rounded-xl bg-[#121215]/95 border border-white/10"
+        className="mx-auto flex w-full max-w-5xl flex-col gap-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5">
-          <Layers className="w-4 h-4 text-sky-400" />
-          <span className="text-xs font-semibold text-zinc-100">Mission Control &amp; Workspaces</span>
-          <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-900 border border-white/5">
-            Alt+Tab / Esc
-          </span>
-        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-[var(--breeze-text)]">
+            <Layers className="h-4 w-4 plasma-accent-text" aria-hidden="true" />
+            <span className="text-sm font-semibold">Plasma Overview</span>
+            <span className="rounded border border-[var(--breeze-border)] bg-[var(--breeze-base)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--breeze-text-muted)]">
+              Ctrl+Up / Alt+Tab
+            </span>
+          </div>
 
-        <div className="flex items-center gap-2">
-          {([1, 2, 3] as const).map((ws) => {
-            const count = allWindows.filter((w) => w.workspace === ws).length;
-            const active = activeWorkspace === ws;
-            return (
-              <button
-                key={ws}
-                onClick={() => setWorkspace(ws)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors ${
-                  active
-                    ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-                    : 'bg-zinc-900/80 text-zinc-400 hover:text-zinc-200 border border-white/5'
-                }`}
-              >
-                <span>Workspace {ws}</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-black/40 text-zinc-400">
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          {/* Overview Quick Filter */}
+          <div className="relative w-64 max-w-full">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--breeze-text-muted)]"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter open windows..."
+              className="w-full rounded-lg border border-[var(--breeze-border-strong)] bg-[var(--breeze-base)]/90 py-1.5 pl-8 pr-3 text-xs text-[var(--breeze-text)] placeholder:text-[var(--breeze-text-muted)] focus:border-[var(--plasma-accent)] focus:outline-none"
+            />
+          </div>
 
-        <button
-          onClick={() => setMissionControlOpen(false)}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
-          title="Close Mission Control"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Workspaces Grid */}
-      <div
-        className="flex-1 max-w-6xl w-full mx-auto grid grid-cols-3 gap-5 overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {([1, 2, 3] as const).map((ws) => {
-          const wsWindows = allWindows
-            .filter((w) => w.workspace === ws)
-            .sort((a, b) => b.zIndex - a.zIndex);
-          const isCurrent = activeWorkspace === ws;
-
-          return (
-            <div
-              key={ws}
-              className={`rounded-xl border p-4 flex flex-col transition-all ${
-                isCurrent
-                  ? 'bg-[#121215]/95 border-sky-500/30 shadow-xl'
-                  : 'bg-[#0e0e11]/90 border-white/10 hover:border-white/15'
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAllDesktops((v) => !v)}
+              className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                showAllDesktops
+                  ? 'plasma-accent-fill border-transparent'
+                  : 'border-[var(--breeze-border)] bg-[var(--breeze-view)] text-[var(--breeze-text-muted)] hover:text-[var(--breeze-text)]'
               }`}
             >
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
-                <button
-                  onClick={() => {
-                    setWorkspace(ws);
-                    setMissionControlOpen(false);
-                  }}
-                  className="flex items-center gap-2 text-xs font-semibold text-zinc-200 hover:text-sky-300"
-                >
+              {showAllDesktops ? 'All Desktops' : `Desktop ${activeWorkspace}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOverviewOpen(false)}
+              aria-label="Close Plasma Overview"
+              className="rounded-lg p-1.5 text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] cursor-pointer"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Virtual Desktops 1–3 Thumbnail Strip */}
+        <div className="grid grid-cols-3 gap-3">
+          {([1, 2, 3] as const).map((ws) => {
+            const wsWins = allWindows.filter((w) => w.workspace === ws)
+            const active = activeWorkspace === ws
+            return (
+              <div
+                key={ws}
+                onClick={() => setWorkspace(ws)}
+                className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3.5 py-2.5 transition ${
+                  active
+                    ? 'border-[var(--plasma-accent)] bg-[var(--breeze-view)] shadow-[0_0_18px_color-mix(in_srgb,var(--plasma-accent)_22%,transparent)]'
+                    : 'border-[var(--breeze-border)] bg-[var(--breeze-base)]/80 hover:border-[var(--breeze-border-strong)]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
                   <span
-                    className={`w-2 h-2 rounded-full ${
-                      isCurrent ? 'bg-sky-400' : 'bg-zinc-600'
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-xs font-semibold ${
+                      active
+                        ? 'plasma-accent-fill'
+                        : 'bg-[var(--breeze-header)] text-[var(--breeze-text-muted)]'
                     }`}
-                  />
-                  Workspace {ws}
-                  {isCurrent && (
-                    <span className="text-[10px] font-mono text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded">
-                      ACTIVE
-                    </span>
-                  )}
-                </button>
+                  >
+                    {ws}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-[var(--breeze-text)]">
+                      Virtual Desktop {ws}
+                    </div>
+                    <div className="font-mono text-[10px] text-[var(--breeze-text-muted)]">
+                      {wsWins.length} {wsWins.length === 1 ? 'window' : 'windows'}
+                    </div>
+                  </div>
+                </div>
                 <button
-                  onClick={() => {
-                    setWorkspace(ws);
-                    openApp('terminal');
-                    setMissionControlOpen(false);
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setWorkspace(ws)
+                    openApp('terminal')
+                    setOverviewOpen(false)
                   }}
-                  className="p-1 rounded hover:bg-white/5 text-zinc-400 hover:text-zinc-200"
-                  title={`Open Terminal in Workspace ${ws}`}
+                  title={`Open Terminal on Desktop ${ws}`}
+                  aria-label={`Open Terminal on Desktop ${ws}`}
+                  className="rounded-md p-1 text-[var(--breeze-text-muted)] hover:bg-[var(--breeze-hover)] hover:text-[var(--breeze-text)] cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               </div>
+            )
+          })}
+        </div>
+      </div>
 
-              {wsWindows.length === 0 ? (
-                <div
-                  onClick={() => {
-                    setWorkspace(ws);
-                    setMissionControlOpen(false);
-                  }}
-                  className="flex-1 flex flex-col items-center justify-center text-zinc-600 text-xs py-12 cursor-pointer hover:text-zinc-400"
-                >
-                  No active windows in Workspace {ws}
-                </div>
-              ) : (
-                <div className="space-y-2.5 overflow-y-auto">
-                  {wsWindows.map((win) => (
-                    <div
-                      key={win.id}
-                      onClick={() => handleSelectWindow(win.id, ws)}
-                      className="group p-3 rounded-lg bg-[#1c1c21] border border-white/10 hover:border-sky-500/40 cursor-pointer transition-all flex items-center justify-between"
+      {/* Window Grid */}
+      <div
+        className="mx-auto flex-1 w-full max-w-6xl overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {visibleWindows.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-xs text-[var(--breeze-text-muted)]">
+            <p>No open windows on Virtual Desktop {activeWorkspace}.</p>
+            <button
+              type="button"
+              onClick={() => {
+                openApp('terminal')
+                setOverviewOpen(false)
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg plasma-accent-fill px-3.5 py-1.5 font-semibold cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Open Strata Terminal
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {visibleWindows.map((win) => (
+              <div
+                key={win.id}
+                onClick={() => handleSelectWindow(win.id, win.workspace)}
+                className="group flex flex-col overflow-hidden rounded-xl border border-[var(--breeze-border-strong)] bg-[var(--breeze-view)] hover:border-[var(--plasma-accent)] cursor-pointer transition-all kwin-shadow"
+              >
+                {/* Mini Breeze Title Bar */}
+                <div className="flex h-8 items-center justify-between border-b border-[var(--breeze-border)] bg-[var(--breeze-header)] px-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AppIcon
+                      name={win.icon}
+                      appId={win.appId}
+                      className="h-3.5 w-3.5 shrink-0 plasma-accent-text"
+                    />
+                    <span className="truncate text-xs font-medium text-[var(--breeze-text)]">
+                      {win.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {win.keepAbove && (
+                      <Pin className="h-3 w-3 plasma-accent-text" aria-label="Pinned above" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        closeWindow(win.id)
+                      }}
+                      title="Close window"
+                      aria-label={`Close ${win.title}`}
+                      className="rounded-full p-1 text-[var(--breeze-text-muted)] hover:bg-[#da4453] hover:text-white cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
-                          <AppIcon appId={win.appId} className="w-3.5 h-3.5 text-sky-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-medium text-zinc-100 truncate">
-                            {win.title}
-                          </div>
-                          <div className="text-[10px] font-mono text-zinc-500">
-                            {win.width}×{win.height}{' '}
-                            {win.isMinimized ? '• Minimized' : win.isMaximized ? '• Maximized' : ''}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100">
-                        <span className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-sky-400">
-                          <Maximize2 className="w-3 h-3" />
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeWindow(win.id);
-                          }}
-                          className="p-1 rounded hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
-                          title="Close Window"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                {/* Window Card Preview */}
+                <div className="flex h-36 flex-col items-center justify-center gap-2 bg-[var(--breeze-base)]/80 p-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--breeze-border)] bg-[var(--breeze-view)] plasma-accent-text group-hover:scale-105 transition-transform">
+                    <AppIcon name={win.icon} appId={win.appId} className="h-6 w-6" />
+                  </div>
+                  <div className="font-mono text-[10px] text-[var(--breeze-text-muted)]">
+                    Desktop {win.workspace} • {win.width}×{win.height}
+                    {win.isMaximized ? ' • Maximized' : win.isMinimized ? ' • Minimized' : ''}
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[10px] plasma-accent-text opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Maximize2 className="h-2.5 w-2.5" aria-hidden="true" /> Focus Window
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
-  );
-};
+  )
+}

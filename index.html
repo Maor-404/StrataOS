@@ -1,39 +1,62 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var cs = localStorage.getItem('color-scheme');
+        if (cs) {
+          document.querySelector('meta[name="color-scheme"]').content = cs;
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StrataOS — Browser-Native Linux 7.3 Web OS &amp; strataget WASM Ecosystem</title>
+    <title>StrataOS v1.0 — Real Linux 7.x Kernel + KDE Plasma 6 Desktop in One Tab</title>
     <meta
       name="description"
-      content="Real Linux 7.x Kernel &amp; WASM Package Manager in Your Browser. Powered by pithings/unkernel WebAssembly SDK with the strataget CLI and Strata Store."
+      content="Boot a real Linux 7.3 kernel with StrataUEFI firmware, KDE Plasma 6 desktop, strataget WASM package manager, WebGPU Compute Studio, and Chrome Built-in AI Copilot directly in your browser — zero login, zero backend."
     />
 
-    <!-- OpenGraph / Facebook / GitHub Social Preview -->
+    <!-- OpenGraph / Facebook / LinkedIn / GitHub Social Preview -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StrataOS" />
     <meta property="og:url" content="https://sonic-koto-mowjpsl.tmp.now/" />
-    <meta property="og:title" content="StrataOS — Real Linux 7.x Kernel &amp; WASM Package Manager in Your Browser" />
+    <meta
+      property="og:title"
+      content="StrataOS v1.0 — Real Linux 7.x + KDE Plasma 6 in One Browser Tab"
+    />
     <meta
       property="og:description"
-      content="High-performance browser-native Linux 7.3 Web OS powered by pithings/unkernel WebAssembly SDK, persistent IndexedDB ext4 storage, strataget CLI, and Strata Store."
+      content="Zero-backend browser Linux 7.3 OS powered by pithings/unkernel WASM, persistent IndexedDB ext4 storage, KDE Plasma 6 Breeze desktop, strataget package manager, and WebGPU Compute Studio."
     />
     <meta property="og:image" content="https://sonic-koto-mowjpsl.tmp.now/og-preview.png" />
-    <meta property="og:image:alt" content="StrataOS — Real Linux 7.x Kernel &amp; WASM Package Manager in Your Browser" />
+    <meta
+      property="og:image:alt"
+      content="StrataOS v1.0 running a real Linux 7.3 kernel inside a KDE Plasma 6 Breeze Dark desktop in the browser"
+    />
     <meta property="og:image:width" content="1280" />
     <meta property="og:image:height" content="640" />
 
     <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://sonic-koto-mowjpsl.tmp.now/" />
-    <meta name="twitter:title" content="StrataOS — Real Linux 7.x Kernel &amp; WASM Package Manager in Your Browser" />
+    <meta
+      name="twitter:title"
+      content="StrataOS v1.0 — Real Linux 7.x + KDE Plasma 6 in One Browser Tab"
+    />
     <meta
       name="twitter:description"
-      content="Real Linux 7.x Kernel &amp; WASM Package Manager in Your Browser. Powered by unkernel &amp; strataget with zero backend."
+      content="Boot a real Linux 7.3 kernel past working UEFI firmware into KDE Plasma 6, install WASM apps with strataget, and survive a hard refresh. Zero backend."
     />
     <meta name="twitter:image" content="https://sonic-koto-mowjpsl.tmp.now/og-preview.png" />
+    <meta
+      name="twitter:image:alt"
+      content="StrataOS v1.0 Linux 7.3 kernel and KDE Plasma 6 desktop running in a browser tab"
+    />
   </head>
-  <body class="bg-zinc-950 text-zinc-100 antialiased overflow-hidden">
+  <body class="antialiased overflow-hidden">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

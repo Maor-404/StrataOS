@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+__pycache__/
+*.py[cod]
+strata_trailer/output/

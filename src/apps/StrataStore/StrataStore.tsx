@@ -319,6 +319,17 @@ export const StrataStore: React.FC = () => {
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Sync Index
           </button>
+
+          <a
+            id="store-submit-wasm-cta"
+            href="https://github.com/Maor-404/StrataOS/issues/new?title=WASM%20App%20Submission%3A%20&body=App%20ID%3A%0ARepo%20URL%3A%0AWASM%20Entry%3A%0ACategory%3A%20(wasm-gui%20%7C%20wasm-cli)%0ADescription%3A"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition"
+          >
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            Submit a WASM App
+          </a>
         </div>
       </div>
 

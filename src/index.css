@@ -2,21 +2,63 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
-    --strata-bg-base: oklch(0.141 0.005 285.82); /* #09090b */
-    --strata-surface-window: oklch(0.182 0.006 285.8 / 0.94); /* 94% opaque #121215 */
-    --strata-surface-elevated: oklch(0.228 0.008 285.8); /* #1c1c21 */
-    --strata-border-hairline: oklch(1 0 0 / 0.08); /* rgba(255,255,255,0.08) */
-    --strata-border-active: oklch(0.78 0.14 210 / 0.42);
-    --strata-accent: oklch(0.79 0.14 208); /* #22d3ee */
-    --font-sans: "Geist Sans", "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: light dark;
+
+    /* KDE Plasma 6 Breeze Dark design tokens (default) */
+    --breeze-base: #1b1e20;
+    --breeze-view: #232629;
+    --breeze-header: #31363b;
+    --breeze-header-inactive: #25292d;
+    --breeze-window-surface: rgba(27, 30, 32, 0.95);
+    --breeze-panel-bg: rgba(35, 38, 41, 0.86);
+    --breeze-panel-solid: #232629;
+    --breeze-popover-bg: rgba(35, 38, 41, 0.95);
+    --breeze-border: rgba(255, 255, 255, 0.09);
+    --breeze-border-strong: rgba(255, 255, 255, 0.16);
+    --breeze-text: #eff0f1;
+    --breeze-text-muted: #a1a9b1;
+    --breeze-hover: rgba(255, 255, 255, 0.08);
+    --plasma-accent: #3daee9;
+
+    /* Legacy alias compatibility */
+    --strata-bg-base: var(--breeze-base);
+    --strata-surface-window: var(--breeze-window-surface);
+    --strata-surface-elevated: var(--breeze-view);
+    --strata-border-hairline: var(--breeze-border);
+    --strata-accent: var(--plasma-accent);
+
+    --font-sans: "Geist Variable", "Geist Sans", "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "Geist Mono Variable", "Geist Mono", "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
     font-family: var(--font-sans);
+
+    &:has(> head > meta[name="color-scheme"][content="dark"]) {
+      color-scheme: dark;
+    }
+    &:has(> head > meta[name="color-scheme"][content="light"]) {
+      color-scheme: light;
+    }
+  }
+
+  :root[data-theme="light"],
+  :root:has(> head > meta[name="color-scheme"][content="light"]):not([data-theme="dark"]) {
+    --breeze-base: #eff0f1;
+    --breeze-view: #fcfcfc;
+    --breeze-header: #dee0e2;
+    --breeze-header-inactive: #e6e8ea;
+    --breeze-window-surface: rgba(239, 240, 241, 0.95);
+    --breeze-panel-bg: rgba(245, 246, 247, 0.86);
+    --breeze-panel-solid: #eff0f1;
+    --breeze-popover-bg: rgba(252, 252, 252, 0.96);
+    --breeze-border: rgba(27, 30, 32, 0.12);
+    --breeze-border-strong: rgba(27, 30, 32, 0.22);
+    --breeze-text: #232629;
+    --breeze-text-muted: #586069;
+    --breeze-hover: rgba(27, 30, 32, 0.07);
   }
 
   * {
     box-sizing: border-box;
-    border-color: var(--strata-border-hairline);
+    border-color: var(--breeze-border);
   }
 
   html,
@@ -27,8 +69,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: #09090b;
-    color: #f4f4f5;
+    background-color: var(--breeze-base);
+    color: var(--breeze-text);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -42,22 +84,157 @@
   }
 }
 
-/* Controlled Blur Utility: ONLY applied to Top Status Bar, Floating Dock, Command Palette & Notification Drawer */
-.strata-chrome-blur {
-  background-color: rgba(18, 18, 21, 0.82);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
+/* Auto-contrast foreground against dynamic Plasma accent color (contrast-color + CIE XYZ-D65 RCS fallback) */
+.plasma-accent-fill {
+  background-color: var(--plasma-accent);
+  --wcag-y-threshold: 0.17913;
+  --y: max(0, sign(var(--wcag-y-threshold) - y));
+  color: #0b0e11;
+  color: color(from var(--plasma-accent) xyz-d65 calc(var(--y) * 0.9505) var(--y) calc(var(--y) * 1.089));
+  color: contrast-color(var(--plasma-accent));
 }
 
-/* 94% opaque #121215 window surface (no per-window backdrop-filter blur) */
+.plasma-accent-text {
+  color: var(--plasma-accent);
+}
+
+/* Controlled Chrome Blur: Floating Plasma Panel, KRunner, Popovers & Drawers only */
+.plasma-panel-blur,
+.strata-chrome-blur {
+  background-color: var(--breeze-panel-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.plasma-panel-solid {
+  background-color: var(--breeze-panel-solid);
+}
+
+/* Breeze 95%-opaque Window Surface (no per-window backdrop-filter blur) */
 .strata-window-surface {
-  background-color: rgba(18, 18, 21, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--breeze-window-surface);
+  border: 1px solid var(--breeze-border);
+  color: var(--breeze-text);
 }
 
 .strata-panel-elevated {
-  background-color: #1c1c21;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--breeze-view);
+  border: 1px solid var(--breeze-border);
+}
+
+/* Layered KWin window shadows + active Plasma accent rim glow */
+.kwin-shadow {
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.32),
+    0 12px 30px rgba(0, 0, 0, 0.44);
+}
+
+.kwin-shadow-active {
+  border-color: color-mix(in srgb, var(--plasma-accent) 55%, var(--breeze-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--plasma-accent) 36%, transparent),
+    0 0 22px color-mix(in srgb, var(--plasma-accent) 18%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.46),
+    0 26px 64px rgba(0, 0, 0, 0.72);
+}
+
+/* Breeze surface utility classes */
+.breeze-surface {
+  background-color: var(--breeze-base);
+  color: var(--breeze-text);
+}
+
+.breeze-view {
+  background-color: var(--breeze-view);
+  color: var(--breeze-text);
+}
+
+.breeze-header {
+  background-color: var(--breeze-header);
+  color: var(--breeze-text);
+}
+
+.breeze-header-inactive {
+  background-color: var(--breeze-header-inactive);
+  color: var(--breeze-text-muted);
+}
+
+.breeze-popover {
+  background-color: var(--breeze-popover-bg);
+  color: var(--breeze-text);
+  border: 1px solid var(--breeze-border-strong);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.32);
+}
+
+/* Native Popover API + CSS Anchor Positioning with @supports progressive enhancement */
+[popover].plasma-popover {
+  padding: 0;
+  color: var(--breeze-text);
+  background-color: transparent;
+  border: none;
+  overflow: visible;
+}
+
+[popover].plasma-popover:is(:popover-open, .\:popover-open) {
+  display: block;
+}
+
+@supports (position-area: block-start) {
+  [popover].plasma-popover-start {
+    inset: auto;
+    margin: 0 0 10px 0;
+    position-area: block-start span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+
+  [popover].plasma-popover-end {
+    inset: auto;
+    margin: 0 0 10px 0;
+    position-area: block-start span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+
+  [popover].plasma-popover-top-start {
+    inset: auto;
+    margin: 10px 0 0 0;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+
+  [popover].plasma-popover-top-end {
+    inset: auto;
+    margin: 10px 0 0 0;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+}
+
+@supports not (position-area: block-start) {
+  [popover].plasma-popover-start {
+    position: fixed;
+    inset: auto auto 60px 10px;
+    margin: 0;
+  }
+
+  [popover].plasma-popover-end {
+    position: fixed;
+    inset: auto 10px 60px auto;
+    margin: 0;
+  }
+
+  [popover].plasma-popover-top-start {
+    position: fixed;
+    inset: 60px auto auto 10px;
+    margin: 0;
+  }
+
+  [popover].plasma-popover-top-end {
+    position: fixed;
+    inset: 60px 10px auto auto;
+    margin: 0;
+  }
 }
 
 /* Container query host for responsive window interiors */
@@ -66,14 +243,44 @@
   container-name: strata-win;
 }
 
-/* View Transitions for Workspace Switching & Mission Control */
+/* Draggable handle affordance (applied to handle only, not content) */
+.plasmoid-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.plasmoid-drag-handle.dragging {
+  cursor: grabbing;
+}
+
+/* KWin Wobbly Windows gentle spring settle when drag stops */
+.kwin-wobbly-settle {
+  transition: transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1);
+}
+
+/* Desktop Edit Mode slight zoom-out canvas */
+.plasma-desktop-canvas {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-radius 240ms ease;
+  transform-origin: center center;
+}
+
+.plasma-desktop-canvas[data-edit-mode="true"] {
+  transform: scale(0.955) translateY(14px);
+  border-radius: 14px;
+  outline: 2px dashed color-mix(in srgb, var(--plasma-accent) 60%, transparent);
+  outline-offset: 4px;
+}
+
+/* View Transitions for Workspace Switching & Plasma Overview */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 160ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Custom slim dark scrollbars */
+/* Custom slim scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -84,10 +291,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(128, 138, 148, 0.28);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 211, 238, 0.38);
+  background: color-mix(in srgb, var(--plasma-accent) 65%, transparent);
 }

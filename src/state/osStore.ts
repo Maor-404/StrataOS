@@ -65,6 +65,8 @@ export interface WindowInstance {
   isMinimized: boolean
   isMaximized: boolean
   snapState: 'left' | 'right' | null
+  /** KWin "Keep Above Others" — boosts z-index above normal windows */
+  keepAbove?: boolean
   prevBounds?: { x: number; y: number; width: number; height: number }
   wasmPkgId?: string
   initialPayload?: {
@@ -73,6 +75,9 @@ export interface WindowInstance {
   }
 }
 
+export type ThemeMode = 'dark' | 'light' | 'system'
+export type PanelPosition = 'bottom' | 'top'
+
 export interface OsSettings {
   wallpaper: WallpaperId
   accentColor: AccentColorId
@@ -80,6 +85,43 @@ export interface OsSettings {
   terminalFontSize: number
   showKernelTimestamps: boolean
   webgpuWallpaperEnabled: boolean
+  /** Breeze Dark (default) or Breeze Light color scheme */
+  theme: ThemeMode
+  /** Plasma accent color (hex). Default Plasma Blue #3daee9 */
+  accentHex: string
+  /** KWin Wobbly Windows desktop effect (CSS skew while dragging) */
+  wobblyWindows: boolean
+  /** Floating Plasma Panel screen edge */
+  panelPosition: PanelPosition
+}
+
+export type PlasmoidType = 'sysmon' | 'clock' | 'note' | 'quicklaunch'
+
+export interface PlasmoidInstance {
+  id: string
+  type: PlasmoidType
+  x: number
+  y: number
+  w: number
+  h: number
+  data?: { text?: string; analog?: boolean; apps?: AppId[] }
+}
+
+/** Plasma panel geometry (px) shared by panel, window manager & snapping */
+export const PANEL_HEIGHT = 44
+export const PANEL_MARGIN = 6
+
+/** Usable desktop work area. When `flush`, the panel is docked to the screen edge (maximized window present). */
+export function getWorkArea(position: PanelPosition, flush: boolean) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+  const reserved = flush ? PANEL_HEIGHT : PANEL_HEIGHT + PANEL_MARGIN * 2
+  return {
+    x: 0,
+    y: position === 'top' ? reserved : 0,
+    width: vw,
+    height: vh - reserved,
+  }
 }
 
 export interface NativeAppMeta {
@@ -231,6 +273,8 @@ export const NATIVE_APPS: Record<NativeAppId, NativeAppMeta> = {
 
 const PREFS_STORAGE_KEY = 'strataos:preferences:v1'
 const NVRAM_STORAGE_KEY = 'strataos:uefi_nvram:v1'
+const PLASMOIDS_STORAGE_KEY = 'strataos:plasmoids:v1'
+const PROOF_CARD_STORAGE_KEY = 'strataos:proof_card_dismissed:v1'
 
 interface PersistedPreferences {
   settings: OsSettings
@@ -244,6 +288,10 @@ const DEFAULT_SETTINGS: OsSettings = {
   terminalFontSize: 13,
   showKernelTimestamps: true,
   webgpuWallpaperEnabled: false,
+  theme: 'dark',
+  accentHex: '#3daee9',
+  wobblyWindows: false,
+  panelPosition: 'bottom',
 }
 
 const DEFAULT_NVRAM: UefiNvramSettings = {
@@ -294,6 +342,19 @@ export interface OsState {
   // Settings
   settings: OsSettings
 
+  // KDE Plasma desktop state
+  editMode: boolean
+  peekDesktop: boolean
+  proofCardDismissed: boolean
+  plasmoids: PlasmoidInstance[]
+
+  setEditMode: (on: boolean) => void
+  setPeekDesktop: (on: boolean) => void
+  dismissProofCard: () => void
+  addPlasmoid: (type: PlasmoidType) => void
+  updatePlasmoid: (id: string, partial: Partial<Omit<PlasmoidInstance, 'id' | 'type'>>) => void
+  removePlasmoid: (id: string) => void
+  toggleKeepAbove: (windowId: string) => void
   // Actions
   setBootPhase: (phase: BootPhase) => void
   updateNvram: (partial: Partial<UefiNvramSettings>) => void
@@ -337,12 +398,23 @@ export interface OsState {
 }
 
 function savePreferencesToIdb(settings: OsSettings, pinnedApps: AppId[]) {
-  const payload: PersistedPreferences = { settings, pinnedApps }
+  const payload: PersistedPreferences = JSON.parse(JSON.stringify({ settings, pinnedApps }))
   void idbSet(PREFS_STORAGE_KEY, payload).catch(() => {})
 }
 
 function saveNvramToIdb(nvram: UefiNvramSettings) {
   void idbSet(NVRAM_STORAGE_KEY, nvram).catch(() => {})
+}
+
+function savePlasmoidsToIdb(plasmoids: PlasmoidInstance[]) {
+  void idbSet(PLASMOIDS_STORAGE_KEY, JSON.parse(JSON.stringify(plasmoids))).catch(() => {})
+}
+
+const PLASMOID_DEFAULT_SIZE: Record<PlasmoidType, { w: number; h: number }> = {
+  sysmon: { w: 260, h: 150 },
+  clock: { w: 180, h: 180 },
+  note: { w: 220, h: 180 },
+  quicklaunch: { w: 220, h: 96 },
 }
 
 function getInitialBootPhase(): BootPhase {
@@ -409,6 +481,72 @@ export const useOsStore = create<OsState>()(
     pinnedApps: DEFAULT_PINNED_APPS,
     settings: DEFAULT_SETTINGS,
 
+    editMode: false,
+    peekDesktop: false,
+    proofCardDismissed: true,
+    plasmoids: [],
+
+    setEditMode: (on) =>
+      set((state) => {
+        state.editMode = on
+      }),
+
+    setPeekDesktop: (on) =>
+      set((state) => {
+        state.peekDesktop = on
+      }),
+
+    dismissProofCard: () => {
+      set((state) => {
+        state.proofCardDismissed = true
+      })
+      void idbSet(PROOF_CARD_STORAGE_KEY, true).catch(() => {})
+    },
+
+    addPlasmoid: (type) =>
+      set((state) => {
+        const size = PLASMOID_DEFAULT_SIZE[type]
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
+        const n = state.plasmoids.length
+        state.plasmoids.push({
+          id: `plasmoid-${type}-${Date.now().toString(36)}`,
+          type,
+          x: Math.max(120, vw - size.w - 32 - (n % 4) * 28),
+          y: 40 + (n % 6) * 36,
+          w: size.w,
+          h: size.h,
+          data:
+            type === 'note'
+              ? { text: 'strataget install pixelsynth\n→ reload → still here ✓' }
+              : type === 'clock'
+                ? { analog: true }
+                : type === 'quicklaunch'
+                  ? { apps: ['terminal', 'store', 'gpu-studio', 'copilot'] }
+                  : undefined,
+        })
+        savePlasmoidsToIdb(state.plasmoids)
+      }),
+
+    updatePlasmoid: (id, partial) =>
+      set((state) => {
+        const p = state.plasmoids.find((x) => x.id === id)
+        if (!p) return
+        Object.assign(p, partial)
+        savePlasmoidsToIdb(state.plasmoids)
+      }),
+
+    removePlasmoid: (id) =>
+      set((state) => {
+        state.plasmoids = state.plasmoids.filter((x) => x.id !== id)
+        savePlasmoidsToIdb(state.plasmoids)
+      }),
+
+    toggleKeepAbove: (windowId) =>
+      set((state) => {
+        const win = state.windows[windowId]
+        if (!win) return
+        win.keepAbove = !win.keepAbove
+      }),
     setBootPhase: (phase) =>
       set((state) => {
         state.bootPhase = phase
@@ -454,9 +592,18 @@ export const useOsStore = create<OsState>()(
         })
 
       if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-        ;(document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+        const vt = (
+          document as Document & {
+            startViewTransition: (cb: () => void) => {
+              ready?: Promise<void>
+              finished?: Promise<void>
+            }
+          }
+        ).startViewTransition(() => {
           applyChange()
         })
+        vt?.ready?.catch(() => {})
+        vt?.finished?.catch(() => {})
       } else {
         applyChange()
       }
@@ -483,7 +630,16 @@ export const useOsStore = create<OsState>()(
           state.missionControlOpen = open
         })
       if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-        ;(document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition(apply)
+        const vt = (
+          document as Document & {
+            startViewTransition: (cb: () => void) => {
+              ready?: Promise<void>
+              finished?: Promise<void>
+            }
+          }
+        ).startViewTransition(apply)
+        vt?.ready?.catch(() => {})
+        vt?.finished?.catch(() => {})
       } else {
         apply()
       }
@@ -727,23 +883,26 @@ export const useOsStore = create<OsState>()(
           if (!win.isMaximized && !win.snapState) {
             win.prevBounds = { x: win.x, y: win.y, width: win.width, height: win.height }
           }
-          const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
-          const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-          const usableHeight = vh - 32 - 74
-          const halfW = Math.floor((vw - 16) / 2)
+          const area = getWorkArea(state.settings.panelPosition, false)
+          const gap = PANEL_MARGIN
+          const halfW = Math.floor((area.width - gap * 3) / 2)
           win.isMaximized = false
           win.snapState = snap
-          win.x = snap === 'left' ? 6 : halfW + 10
-          win.y = 38
+          win.x = snap === 'left' ? gap : halfW + gap * 2
+          win.y = area.y + gap
           win.width = halfW
-          win.height = Math.max(win.minHeight, usableHeight)
+          win.height = Math.max(win.minHeight, area.height - gap)
           return
         }
 
+        const area = getWorkArea(state.settings.panelPosition, false)
         win.isMaximized = false
         win.snapState = null
         win.x = Math.round(bounds.x)
-        win.y = Math.max(34, Math.round(bounds.y))
+        win.y = Math.min(
+          Math.max(area.y, Math.round(bounds.y)),
+          Math.max(area.y, area.y + area.height - 40)
+        )
         win.width = Math.max(win.minWidth, Math.round(bounds.width))
         win.height = Math.max(win.minHeight, Math.round(bounds.height))
       }),
@@ -766,20 +925,32 @@ export const useOsStore = create<OsState>()(
 
     hydratePreferences: async () => {
       try {
-        const [savedPrefs, savedNvram] = await Promise.all([
+        const [savedPrefs, savedNvram, savedPlasmoids, proofDismissed] = await Promise.all([
           idbGet<PersistedPreferences>(PREFS_STORAGE_KEY),
           idbGet<UefiNvramSettings>(NVRAM_STORAGE_KEY),
+          idbGet<PlasmoidInstance[]>(PLASMOIDS_STORAGE_KEY),
+          idbGet<boolean>(PROOF_CARD_STORAGE_KEY),
         ])
         set((state) => {
           if (savedPrefs?.settings) {
             state.settings = { ...DEFAULT_SETTINGS, ...savedPrefs.settings }
           }
+          if (Array.isArray(savedPrefs?.pinnedApps) && savedPrefs.pinnedApps.length > 0) {
+            state.pinnedApps = savedPrefs.pinnedApps
+          }
           if (savedNvram) {
             state.nvram = { ...DEFAULT_NVRAM, ...savedNvram }
           }
+          if (Array.isArray(savedPlasmoids)) {
+            state.plasmoids = savedPlasmoids
+          }
+          state.proofCardDismissed = proofDismissed === true
         })
       } catch {
         // ignore IndexedDB errors
+        set((state) => {
+          state.proofCardDismissed = false
+        })
       }
     },
   }))
