@@ -1,0 +1,39 @@
+name: CI Build & Cross-Origin Header Guard
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Production Bundle
+        run: npm run build
+
+      - name: Verify Cloudflare Pages Artifacts & Cross-Origin Isolation Headers
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f dist/_headers
+          test -f dist/_redirects
+          grep -Fq "Cross-Origin-Opener-Policy: same-origin" dist/_headers
+          grep -Fq "Cross-Origin-Embedder-Policy: require-corp" dist/_headers
+          grep -Fq "X-Content-Type-Options: nosniff" dist/_headers
+          grep -Fq "Cross-Origin-Resource-Policy: same-origin" dist/_headers
+          grep -Fq "/* /index.html 200" dist/_redirects
+          echo "Verified dist/index.html, dist/_headers (COOP/COEP/CORP), and dist/_redirects."

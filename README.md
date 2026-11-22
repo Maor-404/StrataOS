@@ -98,6 +98,25 @@ StrataOS supports one-file white-label remixing via [`src/strata.config.ts`](./s
 
 ---
 
+## Deploy to Cloudflare Pages
+
+StrataOS ships pre-configured for free, unlimited-bandwidth hosting on **Cloudflare Pages** via [`public/_headers`](./public/_headers), [`public/_redirects`](./public/_redirects), and [`wrangler.toml`](./wrangler.toml) (while keeping [`vercel.json`](./vercel.json) intact for multi-host compatibility):
+
+1. Connect the `Maor-404/StrataOS` repository in **Cloudflare Dashboard -> Workers & Pages -> Create -> Pages**.
+2. Use these exact build settings:
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+   - **Environment variable:** `NODE_VERSION=20`
+3. Deploy — Cloudflare Pages automatically applies `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`, `Cross-Origin-Resource-Policy: same-origin`, and SPA deep-link routing (`/* /index.html 200`).
+
+Test the exact Cloudflare Pages header behavior locally with Wrangler:
+
+```bash
+npm run preview:cf
+```
+
+---
+
 ## Local Development
 
 ```bash
