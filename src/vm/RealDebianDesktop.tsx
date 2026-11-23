@@ -4,6 +4,7 @@ import {
   ExternalLink,
   HardDrive,
   Keyboard,
+  Layers,
   Maximize2,
   Minimize2,
   RefreshCw,
@@ -26,6 +27,9 @@ import {
   OpfsDiskCache,
   type OpfsCacheState,
 } from './opfsCache'
+import { WaylandDisplayBackend } from './waylandDisplayBackend'
+
+type DisplayBackendHandle = GpuDisplayPipeline | WaylandDisplayBackend
 
 type BootStage =
   | 'checking'
@@ -104,13 +108,19 @@ function computeKmsResolution(): { width: number; height: number } {
   }
 }
 
-export const RealDebianDesktop: React.FC = () => {
+export interface RealDebianDesktopProps {
+  onOpenWaylandLab?: () => void
+}
+
+export const RealDebianDesktop: React.FC<RealDebianDesktopProps> = ({
+  onOpenWaylandLab,
+}) => {
   const setBootPhase = useOsStore((s) => s.setBootPhase)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
   const opfsRef = useRef<OpfsDiskCache | null>(null)
-  const displayRef = useRef<GpuDisplayPipeline | null>(null)
+  const displayRef = useRef<DisplayBackendHandle | null>(null)
   const idbOverlayRef = useRef<CheerpXIdbDevice | null>(null)
   const cxRef = useRef<CheerpXLinuxExtended | null>(null)
 
@@ -230,7 +240,7 @@ export const RealDebianDesktop: React.FC = () => {
 
     const { width, height } = computeKmsResolution()
 
-    let pipeline: GpuDisplayPipeline | null = null
+    let pipeline: DisplayBackendHandle | null = null
     let unsubDisplay: (() => void) | null = null
     let opfsCache: OpfsDiskCache | null = null
     let unsubOpfs: (() => void) | null = null
@@ -248,16 +258,22 @@ export const RealDebianDesktop: React.FC = () => {
         return
       }
 
-      // 2. Start OffscreenCanvas + WebGPU (or 2D ImageBitmap fallback) Display Pipeline
+      const params = new URLSearchParams(window.location.search)
+      const useWaylandBackend = params.get('display') === 'wayland'
+
+      // 2. Start OffscreenCanvas + WebGPU (or Wayland Surface Compositor / 2D fallback) Display Pipeline
       try {
-        pipeline = new GpuDisplayPipeline(canvas, width, height, () => {
+        const onFirstFrame = () => {
           if (cancelled) return
           setStage('ready')
           setBootElapsedMs(Math.round(performance.now() - bootStartedAt))
           setTimeout(() => {
             if (!cancelled) setOverlayVisible(false)
           }, 420)
-        })
+        }
+        pipeline = useWaylandBackend
+          ? new WaylandDisplayBackend(canvas, width, height, onFirstFrame)
+          : new GpuDisplayPipeline(canvas, width, height, onFirstFrame)
         displayRef.current = pipeline
         unsubDisplay = pipeline.subscribe((snap) => {
           if (!cancelled) setDisplayState(snap)
@@ -273,7 +289,6 @@ export const RealDebianDesktop: React.FC = () => {
 
       // 3. Initialize OPFS SyncAccessHandle Cache (with persist() + navigator.locks)
       setStage('streaming')
-      const params = new URLSearchParams(window.location.search)
       const customImage = params.get('image')?.trim()
       const imageUrl = customImage || DEFAULT_DEBIAN_IMAGE_URL
       const gzUrl = customImage ? `${customImage}.gz` : DEFAULT_DEBIAN_GZ_URL
@@ -723,6 +738,19 @@ export const RealDebianDesktop: React.FC = () => {
           </button>
         )}
 
+        {onOpenWaylandLab && (
+          <button
+            id="btn-open-wayland-lab"
+            type="button"
+            onClick={onOpenWaylandLab}
+            title="Open Low-Latency WebGPU Wayland Surface Compositor Lab (/wayland-lab)"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-white/10 hover:text-cyan-300 cursor-pointer"
+          >
+            <Layers className="h-3 w-3" />
+            <span className="hidden md:inline">Wayland Lab</span>
+          </button>
+        )}
+
         <button
           id="btn-open-uefi"
           type="button"
@@ -977,6 +1005,15 @@ export const RealDebianDesktop: React.FC = () => {
               >
                 CLI Recovery (unkernel)
               </button>
+              {onOpenWaylandLab && (
+                <button
+                  type="button"
+                  onClick={onOpenWaylandLab}
+                  className="rounded border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-200 hover:border-cyan-400 hover:bg-cyan-500/20 cursor-pointer"
+                >
+                  Wayland WebGPU Lab
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span>User: strata / Pass: strata</span>
