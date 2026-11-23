@@ -46,7 +46,7 @@ jobs:
           rm -f "$HEADERS_FILE"
 
       - name: Open or Close Incident Issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const healthy = '${{ steps.probe.outputs.healthy }}' === 'true'
