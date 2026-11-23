@@ -370,10 +370,8 @@ export const RealDebianDesktop: React.FC = () => {
             '',
             'Section "InputDevice"',
             '  Identifier "CheerpX Keyboard"',
-            '  Driver "kbd"',
-            '  Option "Protocol" "standard"',
-            '  Option "XkbModel" "pc105"',
-            '  Option "XkbLayout" "us"',
+            '  Driver "evdev"',
+            '  Option "Device" "/dev/input/event0"',
             'EndSection',
             '',
             'Section "InputDevice"',
@@ -407,6 +405,61 @@ export const RealDebianDesktop: React.FC = () => {
             '',
           ].join('\n')
         )
+        await dataDevice.writeFile(
+          '/xinitrc',
+          [
+            '#!/bin/bash',
+            'export HOME=/home/strata',
+            'export USER=strata',
+            'export SHELL=/bin/bash',
+            'export LANG=C.UTF-8',
+            'export LC_ALL=C.UTF-8',
+            'export TERM=xterm-256color',
+            'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-strata}"',
+            'mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"',
+            'export XDG_CURRENT_DESKTOP=LXQt',
+            'export FONTCONFIG_FILE=/data/fonts.conf',
+            'export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/no-dbus',
+            'export QT_QPA_PLATFORM=xcb',
+            'export QT_QPA_PLATFORMTHEME=lxqt',
+            'export QT_STYLE_OVERRIDE=Fusion',
+            'export QT_XCB_GL_INTEGRATION=none',
+            'export QT_X11_NO_MITSHM=1',
+            'export LIBGL_ALWAYS_SOFTWARE=0',
+            'sed -i "s/Papirus-Dark/hicolor/g" /home/strata/.config/lxqt/lxqt.conf 2>/dev/null || true',
+            'xsetroot -solid "#0d1117" 2>/dev/null || true',
+            'xrdb -merge /home/strata/.Xresources 2>/dev/null || true',
+            'openbox &',
+            'OB_PID=$!',
+            'sleep 1.5',
+            'lxqt-panel &',
+            'sleep 3',
+            'xterm -u8 +lc -geometry 86x24+200+100 -title "StrataOS - Debian 12 Bookworm" -e /bin/bash -lc "stty onlcr 2>/dev/null || true; stratafetch; exec /bin/bash -i" &',
+            'sleep 2',
+            'pcmanfm-qt --desktop &',
+            'wait "$OB_PID"',
+            '',
+          ].join('\n')
+        )
+        // Load 14 KB i386 char-device st_ino shim so Xorg evdev opens both event0 (kbd) & event1 (mouse)
+        let hasDevInoShim = false
+        try {
+          const shimRes = await fetch('/vm/libcheerpx-devino.so')
+          if (shimRes.ok) {
+            const shimBytes = new Uint8Array(await shimRes.arrayBuffer())
+            if (shimBytes.byteLength > 1024 && shimBytes[0] === 0x7f && shimBytes[1] === 0x45) {
+              await dataDevice.writeFile('/libcheerpx-devino.so', shimBytes)
+              await dataDevice.writeFile(
+                '/strata-xorg',
+                '#!/bin/sh\nLD_PRELOAD=/usr/local/lib/libcheerpx-devino.so exec /usr/lib/xorg/Xorg "$@"\n'
+              )
+              hasDevInoShim = true
+            }
+          }
+        } catch {
+          // fall back to direct /usr/bin/Xorg if shim unavailable
+        }
         if (cancelled) return
 
         const mounts = [
@@ -452,27 +505,39 @@ export const RealDebianDesktop: React.FC = () => {
 
         setStage('starting-xorg')
 
-        // Clean stale X11 lockfiles & install CheerpX KMS noglamor + kbd/evdev xorg.conf
-        await cx.run(
-          '/bin/sh',
-          [
-            '-c',
-            'rm -f /tmp/.X*-lock /tmp/.X11-unix/X* /etc/X11/xorg.conf /etc/X11/xorg.conf.d/10-cheerpx-noglamor.conf && mkdir -p /etc/X11/xorg.conf.d /tmp/.X11-unix /tmp/strata-fc-cache && chmod 1777 /tmp /tmp/.X11-unix /tmp/strata-fc-cache && cat /data/10-cheerpx-noglamor.conf > /etc/X11/xorg.conf',
-          ],
-          { uid: 0, gid: 0 }
-        )
+        // Clean stale X11 lockfiles & install CheerpX KMS xorg.conf, .xinitrc, and evdev st_ino wrapper
+        const setupCmd = [
+          'rm -f /tmp/.X*-lock /tmp/.X11-unix/X* /etc/X11/xorg.conf /etc/X11/xorg.conf.d/10-cheerpx-noglamor.conf',
+          'mkdir -p /etc/X11/xorg.conf.d /tmp/.X11-unix /tmp/strata-fc-cache /usr/local/lib /usr/local/bin',
+          'chmod 1777 /tmp /tmp/.X11-unix /tmp/strata-fc-cache',
+          'cat /data/10-cheerpx-noglamor.conf > /etc/X11/xorg.conf',
+          'cat /data/xinitrc > /home/strata/.xinitrc && chown 1000:1000 /home/strata/.xinitrc && chmod 755 /home/strata/.xinitrc',
+          ...(hasDevInoShim
+            ? [
+                'cat /data/libcheerpx-devino.so > /usr/local/lib/libcheerpx-devino.so && chmod 755 /usr/local/lib/libcheerpx-devino.so',
+                'cat /data/strata-xorg > /usr/local/bin/strata-xorg && chmod 755 /usr/local/bin/strata-xorg',
+                'chmod u-s /usr/lib/xorg/Xorg 2>/dev/null || true',
+              ]
+            : []),
+        ].join(' && ')
+
+        await cx.run('/bin/sh', ['-c', setupCmd], { uid: 0, gid: 0 })
         if (cancelled) return
+
+        const xorgBin = hasDevInoShim ? '/usr/local/bin/strata-xorg' : '/usr/bin/Xorg'
 
         // Auto-boot real Xorg + Openbox + LXQt-panel + PCManFM-Qt + Terminal as non-root `strata` (uid 1000)
         while (!cancelled) {
           const exitRes = await cx.run(
             '/usr/bin/xinit',
-            ['/home/strata/.xinitrc', '--', '/usr/bin/Xorg', '-retro', '-extension', 'GLX'],
+            ['/home/strata/.xinitrc', '--', xorgBin, '-retro', '-extension', 'GLX'],
             {
               env: [
                 'HOME=/home/strata',
                 'USER=strata',
                 'SHELL=/bin/bash',
+                'LANG=C.UTF-8',
+                'LC_ALL=C.UTF-8',
                 'TERM=xterm-256color',
                 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
                 'DISPLAY=:0',
